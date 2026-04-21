@@ -5,7 +5,7 @@ In this repository, we created a small compiled programming language that target
 
 Try:
 
-´´´g++ -std=c++17 preprocessor.cpp tests.cpp -o bin/tests && ./tests´´´
+>g++ -std=c++17 preprocessor.cpp tests.cpp -o bin/tests && ./tests
 
 
 # Technical Details
