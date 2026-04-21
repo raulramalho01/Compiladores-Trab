@@ -11,6 +11,12 @@ If you want to see manually the .java file. Do:
 
 >preprocess_file("your_input_file.java", "src/bin/saida.java");
 
+Then, with the compiled src/bin/test file:
+
+>./src/bin/test src/your_input_java_file.java src/bin/your_formated_java_file.java
+
+
+
 # Technical Details
 
 In this project we used C++ v. 17 and GCC GNU compiler.
