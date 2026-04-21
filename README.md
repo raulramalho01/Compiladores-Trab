@@ -7,7 +7,7 @@ Inside Compiladores-Trab folder, try:
 
 >g++ -std=c++17 src/preprocessor/preprocessor.cpp src/preprocessor/tests.cpp -o src/bin/test
 
-If you want to see the manually the .java file. Do:
+If you want to see manually the .java file. Do:
 
 >preprocess_file("your_input_file.java", "src/bin/saida.java");
 
