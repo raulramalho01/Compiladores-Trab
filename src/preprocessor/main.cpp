@@ -3,5 +3,5 @@
 #include <sstream>
 
 int main() {
-    preprocess_file("MeuArquivo.java", "saida.java");
+    preprocess_file("input.java", "src/bin/saida.java");
 }
