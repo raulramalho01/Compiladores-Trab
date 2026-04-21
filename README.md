@@ -3,9 +3,9 @@ In this repository, we created a small compiled programming language that target
 
 # How to compile
 
-Try:
+Inside Compiladores-Trab folder, try:
 
->g++ -std=c++17 preprocessor.cpp tests.cpp -o bin/tests && ./tests
+>g++ -std=c++17 src/preprocessor/preprocessor.cpp src/preprocessor/tests.cpp -o src/bin/test
 
 
 # Technical Details
