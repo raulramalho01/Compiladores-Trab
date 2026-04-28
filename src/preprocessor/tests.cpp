@@ -272,7 +272,7 @@ int main()
             "    return x;\n"
             "}";
 
-        const std::string caminho = "/tmp/preprocessor_output.cpp";
+        const std::string caminho = "preprocessor_output.cpp";
 
         // Resultado esperado (consistente com as regras acima):
         // "int main(){" porque ')' e closer e '{' e simbolo
@@ -305,8 +305,8 @@ int main()
 
     {
         // preprocess_file: grava um arquivo de entrada e le a saida
-        const std::string entrada_path = "/tmp/preprocessor_input.cpp";
-        const std::string saida_path   = "/tmp/preprocessor_file_out.cpp";
+        const std::string entrada_path = "preprocessor_input.cpp";
+        const std::string saida_path   = "preprocessor_file_out.cpp";
 
         const std::string codigo =
             "/* bloco */\n"

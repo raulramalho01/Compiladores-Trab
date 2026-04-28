@@ -5,7 +5,7 @@
 
 class Heroi {
     // Atributos do personagem
-    int nivel = 5; 
+    int nivel = 6; 
     String nome = "Aranya"; // Comentário de fim de linha
 
     /* Comentário de uma linha só em bloco */
