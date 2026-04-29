@@ -5,10 +5,13 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+// Importante: Trazendo o Parser que está no outro pacote!
+import parser.Parser; 
+
 public class Main {
     public static void main(String[] args) {
         // Caminho do arquivo limpo que o pré-processador em C++ gerou
-        String caminhoArquivo = "src/bin/saida.java";
+        String caminhoArquivo = "src/bin/output.java";
 
         try {
             // 1. Lê todo o conteúdo do arquivo e salva em uma String
@@ -29,6 +32,11 @@ public class Main {
             for (Token token : tokens) {
                 System.out.println(token);
             }
+
+            // 5. Aciona o Analisador Sintático com a lista de tokens
+            System.out.println("\n=== INICIANDO ANALISADOR SINTÁTICO ===");
+            Parser parser = new Parser(tokens);
+            parser.parse();
 
         } catch (IOException e) {
             System.err.println("Erro ao ler o arquivo: " + e.getMessage());

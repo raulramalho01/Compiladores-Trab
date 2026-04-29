@@ -23,6 +23,20 @@ Inside Compiladores-Trab folder, try:
 
 >java -cp src lexer.Main
 
+# How to compile the parser
+
+Inside Compiladores-Trab folder, try:
+
+>javac src/lexer/*.java
+
+also add on the same line:
+
+src/parser/*.java
+
+and then:
+
+java -cp src lexer.Main
+
 
 # Technical Details
 
