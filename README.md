@@ -48,7 +48,7 @@ We strong encourage the use of the same version.
 
 Raul Ramalho Lucena
 
-Thiago Raquel
+Thiago de Medeiros Raquel
 
 Moisés Átila Rodrigues Lima
 
