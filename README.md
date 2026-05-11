@@ -27,7 +27,7 @@ Inside Compiladores-Trab folder, try:
 
 Inside Compiladores-Trab folder, try:
 
->javac src/lexer/*.java
+>javac -cp src src/parser/SymbolTable.java src/parser/Parser.java
 
 also add on the same line:
 
