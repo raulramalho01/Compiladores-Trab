@@ -31,11 +31,11 @@ Inside Compiladores-Trab folder, try:
 
 also add on the same line:
 
-src/parser/*.java
+>src/parser/*.java
 
 and then:
 
-java -cp src lexer.Main
+>java -cp src lexer.Main
 
 
 # Technical Details
