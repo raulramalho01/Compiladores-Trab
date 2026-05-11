@@ -19,7 +19,7 @@ Then, with the compiled src/bin/test file:
 
 Inside Compiladores-Trab folder, try:
 
->javac src/lexer/*.java
+>javac -cp src src/lexer/Main.java src/parser/Parser.java src/parser/SymbolTable.java
 
 >java -cp src lexer.Main
 
