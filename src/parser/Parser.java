@@ -20,12 +20,12 @@ public class Parser {
         try {
             parseProg();
             
-            // Exigência 4: Mensagem de sucesso e tabela
+            // Mensagem de sucesso e tabela
             System.out.println("\n[SUCESSO] Código está correto sintaticamente!");
             System.out.println(symbolTable);
             
         } catch (RuntimeException e) {
-            // Exigência 5: Informar o local exato e o tipo do erro
+            // Informar o local exato e o tipo do erro
             System.err.println("\n[ERRO SINTÁTICO] " + e.getMessage());
         }
     }
@@ -339,7 +339,7 @@ public class Parser {
     }
 
     // ==========================================
-    // 4. Funções Auxiliares do Motor do Parser (continuam no final do arquivo)
+    // Funções Auxiliares do Motor do Parser (continuam no final do arquivo)
     // ==========================================
 
     private Token consume(TokenType type, String errorMessage) {

@@ -38,7 +38,7 @@ public class Lexer {
 
         char currentChar = input.charAt(position);
 
-        // 1. Pular espaços em branco
+        // Pular espaços em branco
         if (Character.isWhitespace(currentChar)) {
             advance();
             return nextToken();
@@ -47,17 +47,17 @@ public class Lexer {
         int startColumn = column;
         int startLine = line;
 
-        // 2. Identificar Números
+        // Identificar Números
         if (Character.isDigit(currentChar)) {
             return readNumber(startLine, startColumn);
         }
 
-        // 3. Identificar Letras (Identificadores ou Palavras Reservadas)
+        // Identificar Letras (Identificadores ou Palavras Reservadas)
         if (Character.isLetter(currentChar)) {
             return readIdentifierOrKeyword(startLine, startColumn);
         }
 
-        // 4. Identificar Operador de dois caracteres (&&)
+        // Identificar Operador de dois caracteres (&&)
         if (currentChar == '&') {
             advance();
             if (position < input.length() && input.charAt(position) == '&') {
@@ -67,7 +67,7 @@ public class Lexer {
             return new Token(TokenType.ERROR, "&", startLine, startColumn); // '&' sozinho é erro nesta gramática
         }
 
-        // 5. Identificar Operadores simples e Delimitadores
+        // Identificar Operadores simples e Delimitadores
         String symbol = String.valueOf(currentChar);
         if (">+-*!=".contains(symbol)) {
             advance();
@@ -79,7 +79,7 @@ public class Lexer {
             return new Token(TokenType.DELIMITER, symbol, startLine, startColumn);
         }
 
-        // 6. Tratamento de Erro Léxico para caracteres não reconhecidos (ex: @, #)
+        // Tratamento de Erro Léxico para caracteres não reconhecidos (ex: @, #)
         advance();
         return new Token(TokenType.ERROR, symbol, startLine, startColumn);
     }
