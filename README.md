@@ -49,3 +49,8 @@ We strong encourage the use of the same version.
 Raul Ramalho Lucena
 
 Thiago Raquel
+
+Moisés Átila Rodrigues Lima
+
+Marcos Antônio Fontes Leite
+
