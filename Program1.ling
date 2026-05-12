@@ -1,0 +1,26 @@
+/**
+* Aqui começa o programa
+**/
+class Programa{
+    public static void main(String[] a){
+	    System.out.println(new Fac().funcao1(10));
+    }
+}
+
+/**
+* Aqui tem uma funcao
+**/
+class Funcao {
+
+    public int funcao1(int num){
+        // Uma variável aqui
+	    int n_aux ;
+	    if (num < 1)
+	        n_aux = 1 ;
+	    else
+            // Aqui tem algo
+	        n_aux = num * (this.ComputeFac(num-1)) ;
+	    return n_aux ;
+    }
+
+}

@@ -40,12 +40,12 @@ public class Parser {
         }
     }
 
-    // MainC -> 'class' Id '{' 'public' 'static' 'void' 'main' '(' 'String' '[' ']' Id ')' '{' Cmd '}' '}'
+    // MainC -> 'class' Id '{' 'public' 'static' 'void' 'main' '(' 'String' '[' ']' Id ')' '{' Cmd* '}' '}'
     private void parseMainC() {
         consume(TokenType.RESERVED_WORD, "class", "Esperado palavra reservada 'class' no início.");
         
         Token className = consume(TokenType.IDENTIFIER, "Esperado nome da classe (Identificador).");
-        symbolTable.add(className.getLexeme(), "class"); // Registra a classe principal
+        symbolTable.add(className.getLexeme(), "class"); 
         
         consume(TokenType.DELIMITER, "{", "Esperado '{' após nome da classe.");
         consume(TokenType.RESERVED_WORD, "public", "Esperado 'public'.");
@@ -63,10 +63,45 @@ public class Parser {
         consume(TokenType.DELIMITER, ")", "Esperado ')'.");
         consume(TokenType.DELIMITER, "{", "Esperado '{' para iniciar o main.");
         
-        parseCmd(); // Chama a regra Cmd
+        // CORREÇÃO: Lê comandos até encontrar a chave de fechamento '}'
+        while (!check(TokenType.DELIMITER, "}")) {
+            parseCmd(); 
+        }
         
         consume(TokenType.DELIMITER, "}", "Esperado '}' para fechar o main.");
         consume(TokenType.DELIMITER, "}", "Esperado '}' para fechar a classe principal.");
+    }
+
+    // DefMet -> 'public' Type Id '(' Args ')' '{' DefVar Cmd* 'return' Exp ';' '}' DefMet | λ
+    private void parseDefMet() {
+        while (check(TokenType.RESERVED_WORD, "public")) {
+            advance(); 
+            
+            String tipoRetorno = parseType();
+            Token nomeMetodo = consume(TokenType.IDENTIFIER, "Esperado nome do método.");
+            symbolTable.add(nomeMetodo.getLexeme(), "Método (" + tipoRetorno + ")");
+            
+            consume(TokenType.DELIMITER, "(", "Esperado '(' após o nome do método.");
+            
+            if (!check(TokenType.DELIMITER, ")")) {
+                parseArgs();
+            }
+            
+            consume(TokenType.DELIMITER, ")", "Esperado ')' para fechar os argumentos.");
+            consume(TokenType.DELIMITER, "{", "Esperado '{' para iniciar o corpo do método.");
+            
+            parseDefVar();
+            
+            // CORREÇÃO: Lê comandos repetidamente até encontrar a palavra 'return'
+            while (!check(TokenType.RESERVED_WORD, "return")) {
+                parseCmd(); 
+            }
+            
+            consume(TokenType.RESERVED_WORD, "return", "Esperado 'return' no final do método.");
+            parseExp(); 
+            consume(TokenType.DELIMITER, ";", "Esperado ';' após a expressão de retorno.");
+            consume(TokenType.DELIMITER, "}", "Esperado '}' para fechar o método.");
+        }
     }
 
     // Exemplo de como fica um método Fatorado (Type)
@@ -135,37 +170,6 @@ public class Parser {
             tipoArg = parseType();
             nomeArg = consume(TokenType.IDENTIFIER, "Esperado nome do argumento após ','.");
             symbolTable.add(nomeArg.getLexeme(), tipoArg);
-        }
-    }
-
-    // DefMet -> 'public' Type Id '(' Args ')' '{' DefVar Cmd 'return' Exp ';' '}' DefMet | λ
-    private void parseDefMet() {
-        // Enquanto encontrar 'public', significa que há um método para ler
-        while (check(TokenType.RESERVED_WORD, "public")) {
-            advance(); // Consome o 'public'
-            
-            String tipoRetorno = parseType();
-            Token nomeMetodo = consume(TokenType.IDENTIFIER, "Esperado nome do método.");
-            symbolTable.add(nomeMetodo.getLexeme(), "Método (" + tipoRetorno + ")");
-            
-            consume(TokenType.DELIMITER, "(", "Esperado '(' após o nome do método.");
-            
-            // Se o próximo token NÃO for ')', então temos argumentos para processar
-            if (!check(TokenType.DELIMITER, ")")) {
-                parseArgs();
-            }
-            
-            consume(TokenType.DELIMITER, ")", "Esperado ')' para fechar os argumentos.");
-            consume(TokenType.DELIMITER, "{", "Esperado '{' para iniciar o corpo do método.");
-            
-            // Lê o recheio do método
-            parseDefVar();
-            parseCmd(); // Ainda vamos implementar
-            
-            consume(TokenType.RESERVED_WORD, "return", "Esperado 'return' no final do método.");
-            parseExp(); // Ainda vamos implementar
-            consume(TokenType.DELIMITER, ";", "Esperado ';' após a expressão de retorno.");
-            consume(TokenType.DELIMITER, "}", "Esperado '}' para fechar o método.");
         }
     }
 
@@ -301,7 +305,7 @@ public class Parser {
         while (true) {
             if (check(TokenType.OPERATOR, "&&") || check(TokenType.OPERATOR, ">") ||
                 check(TokenType.OPERATOR, "+")  || check(TokenType.OPERATOR, "-") ||
-                check(TokenType.OPERATOR, "*")) {
+                check(TokenType.OPERATOR, "*")  || check(TokenType.OPERATOR, "<")) {
                 advance();
                 parseExp();
             } 

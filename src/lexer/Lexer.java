@@ -69,7 +69,7 @@ public class Lexer {
 
         // Identificar Operadores simples e Delimitadores
         String symbol = String.valueOf(currentChar);
-        if (">+-*!=".contains(symbol)) {
+        if ("<>+-*!=".contains(symbol)) {
             advance();
             return new Token(TokenType.OPERATOR, symbol, startLine, startColumn);
         }

@@ -9,8 +9,7 @@ import parser.Parser;
 
 public class Main {
     public static void main(String[] args) {
-        // Caminho do arquivo limpo que o pré-processador em C++ gerou
-        String caminhoArquivo = "src/bin/output.java";
+        String caminhoArquivo = (args.length > 0) ? args[0] : "src/bin/Program1.java";
 
         try {
             // lê todo o conteúdo do arquivo e salva em uma String
