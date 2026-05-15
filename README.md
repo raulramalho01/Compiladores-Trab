@@ -37,6 +37,19 @@ and then:
 
 >java -cp src lexer.Main
 
+### 🚀 Como compilar e executar (após refatoração)
+
+Certifique-se de ter o compilador **G++** (suporte a C++17) instalado. 
+Abra o terminal na raiz do projeto (`Compiladores-Trab`) e execute o seguinte comando para compilar todos os módulos:
+
+```bash
+g++ -std=c++17 src/preprocessor/preprocessor.cpp src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
+```
+
+Daí faça:
+.\src\bin\compilador.exe (windows)
+./src/bin/compilador (linux)
+
 
 # Technical Details
 

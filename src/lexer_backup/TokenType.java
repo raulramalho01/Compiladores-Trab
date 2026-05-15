@@ -1,4 +1,4 @@
-package lexer;
+package lexer_backup;
 
 public enum TokenType {
     // Palavras reservadas (ex: if, while, int)

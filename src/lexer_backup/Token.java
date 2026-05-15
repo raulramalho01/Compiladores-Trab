@@ -1,4 +1,4 @@
-package lexer;
+package lexer_backup;
 
 public class Token {
     private final TokenType type;
