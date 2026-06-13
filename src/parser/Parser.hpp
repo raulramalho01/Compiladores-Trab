@@ -19,10 +19,21 @@ private:
     void parseDefVar();
     void parseArgs();
     void parseDefCl();
+    
+    // Comandos
+    void parseLcom(); 
     void parseCmd();
-    void parseTermo();
+
+    // Cascata de Precedência de Expressões
     void parseExp();
-    void parseListExp();
+    void parseAndExp();
+    void parseRelExp();
+    void parseAddExp();
+    void parseMulExp();
+    void parseUnExp();
+    void parsePsfExp();
+    void parsePriExp();
+    void parseLexp();
 
     // Funções Auxiliares
     Token consume(TokenType type, const std::string& errorMessage);

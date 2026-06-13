@@ -31,26 +31,61 @@ Token Lexer::nextToken() {
 
     char currentChar = input[position];
 
-    // Pular espaços em branco
+    // 1. Pular espaços em branco
     if (std::isspace(static_cast<unsigned char>(currentChar))) {
         advance();
         return nextToken();
     }
 
+    // 2. NOVO: Tratamento de Comentários Nativos no Lexer
+    if (currentChar == '/') {
+        // Espia o próximo caractere sem avançar o ponteiro principal ainda
+        if (position + 1 < input.length()) {
+            char nextChar = input[position + 1];
+            
+            // Comentário de Linha (//)
+            if (nextChar == '/') {
+                advance(); // Consome a primeira '/'
+                advance(); // Consome a segunda '/'
+                // Pula tudo até achar a quebra de linha ou o fim do arquivo
+                while (position < input.length() && input[position] != '\n') {
+                    advance();
+                }
+                return nextToken(); // Busca o próximo token válido
+            }
+            
+            // Comentário de Bloco (/* */)
+            else if (nextChar == '*') {
+                advance(); // Consome a '/'
+                advance(); // Consome o '*'
+                // Pula tudo até achar "*/"
+                while (position + 1 < input.length()) {
+                    if (input[position] == '*' && input[position + 1] == '/') {
+                        advance(); // Consome o '*'
+                        advance(); // Consome a '/'
+                        break;
+                    }
+                    advance();
+                }
+                return nextToken(); // Busca o próximo token válido
+            }
+        }
+    }
+
     int startColumn = column;
     int startLine = line;
 
-    // Identificar Números
+    // 3. Identificar Números
     if (std::isdigit(static_cast<unsigned char>(currentChar))) {
         return readNumber(startLine, startColumn);
     }
 
-    // Identificar Letras (Identificadores ou Palavras Reservadas)
+    // 4. Identificar Letras (Identificadores ou Palavras Reservadas)
     if (std::isalpha(static_cast<unsigned char>(currentChar))) {
         return readIdentifierOrKeyword(startLine, startColumn);
     }
 
-    // Identificar Operador de dois caracteres (&&)
+    // 5. Identificar Operador de dois caracteres (&&)
     if (currentChar == '&') {
         advance();
         if (position < input.length() && input[position] == '&') {
@@ -60,7 +95,7 @@ Token Lexer::nextToken() {
         return Token(TokenType::ERROR_TOKEN, "&", startLine, startColumn);
     }
 
-    // Identificar Operadores simples e Delimitadores
+    // 6. Identificar Operadores simples e Delimitadores
     std::string symbol(1, currentChar);
     std::string operators = "<>+-*!=";
     if (operators.find(currentChar) != std::string::npos) {

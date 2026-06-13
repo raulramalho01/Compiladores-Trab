@@ -1,54 +1,70 @@
-#include "preprocessor.hpp"
 #include "../lexer/Lexer.hpp"
 #include "../parser/Parser.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <string>
 
-// Função que executa o pipeline completo para um único arquivo
-void compilar_arquivo(const std::string& arquivo_entrada, const std::string& arquivo_saida) {
-    std::cout << "========================================================\n";
-    std::cout << ">>> COMPILANDO: " << arquivo_entrada << "\n";
-    std::cout << "========================================================\n";
-
-    try {
-        // 1. Passa pelo Pré-processador (Cria o arquivo limpo na pasta bin)
-        preprocess_file(arquivo_entrada, arquivo_saida);
-
-        // 2. Lê todo o conteúdo do arquivo limpo recém-gerado
-        std::ifstream inFile(arquivo_saida);
-        if (!inFile.is_open()) {
-            std::cerr << "Erro: Não foi possível ler o arquivo gerado: " << arquivo_saida << "\n";
-            return;
-        }
-        
-        std::stringstream buffer;
-        buffer << inFile.rdbuf();
-        std::string input = buffer.str();
-
-        // 3. Analisador Léxico
-        Lexer lexer(input);
-        std::vector<Token> tokens = lexer.tokenize();
-
-        // 4. Analisador Sintático (já embute a Tabela de Símbolos)
-        Parser parser(tokens);
-        parser.parse();
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Erro inesperado ao compilar " << arquivo_entrada << ": " << e.what() << "\n";
+// Função auxiliar para verificar se uma flag foi passada no terminal
+bool tem_flag(const std::vector<std::string>& args, const std::string& flag) {
+    for (const auto& arg : args) {
+        if (arg == flag) return true;
     }
-    
-    std::cout << "\n\n"; // Espaço entre um teste e outro
+    return false;
 }
 
-int main() {
-    // Processa todos os arquivos em lote (Batch processing)
-    compilar_arquivo("input1.java", "src/bin/output.java");
-    compilar_arquivo("Program1.ling", "src/bin/Program1.java");
-    compilar_arquivo("Program2.ling", "src/bin/Program2.java");
-    compilar_arquivo("Program3.ling", "src/bin/Program3.java");
-    compilar_arquivo("Program4.ling", "src/bin/Program4.java");
-    compilar_arquivo("Program5.ling", "src/bin/Program5.java");
+int main(int argc, char* argv[]) {
+    // Transforma os argumentos do terminal em um vetor de strings para facilitar
+    std::vector<std::string> args(argv, argv + argc);
+
+    if (argc < 2) {
+        std::cout << "Uso correto: ./compilador <arquivo_fonte> [flags]\n";
+        std::cout << "Flags disponíveis:\n";
+        std::cout << "  -tokens       Printar a lista de tokens gerada\n";
+        std::cout << "  -ts           Printar a tabela de símbolos\n";
+        return 1;
+    }
+
+    std::string arquivo_entrada = args[1];
+
+    // 1. Ler o arquivo-fonte diretamente (sem pré-processador isolado)
+    std::ifstream inFile(arquivo_entrada);
+    if (!inFile.is_open()) {
+        std::cerr << "Erro: Não foi possível abrir o arquivo: " << arquivo_entrada << "\n";
+        return 1;
+    }
+
+    std::stringstream buffer;
+    buffer << inFile.rdbuf();
+    std::string input = buffer.str();
+
+    std::cout << "========================================================\n";
+    std::cout << ">>> PROCESSANDO: " << arquivo_entrada << "\n";
+    std::cout << "========================================================\n";
+
+    // 2. Executar Analisador Léxico (Nativo, tratando espaços e comentários)
+    Lexer lexer(input);
+    std::vector<Token> tokens = lexer.tokenize();
+
+    // Se o usuário passou a flag "-tokens", nós imprimimos a lista
+    if (tem_flag(args, "-tokens")) {
+        std::cout << "\n=== [DEBUG] LISTA DE TOKENS GERADA ===\n";
+        for (const auto& token : tokens) {
+            // Se o token for EOF, não precisamos dar print em lexeme vazio
+            if (token.getType() != TokenType::TOKEN_EOF) {
+                std::cout << "Linha " << token.getLine() << ", Col " << token.getColumn() 
+                          << " | Texto: '" << token.getLexeme() << "'\n";
+            }
+        }
+        std::cout << "======================================\n\n";
+    }
+
+    // 3. Executar Analisador Sintático
+    Parser parser(tokens);
+    
+    // O método parse() internamente já vai rodar e imprimir o Sucesso ou Erro Sintático
+    parser.parse();
 
     return 0;
 }

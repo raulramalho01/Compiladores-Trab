@@ -43,9 +43,7 @@ void Parser::parseMainC() {
     consume(TokenType::DELIMITER, ")", "Esperado ')'.");
     consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o main.");
 
-    while (!check(TokenType::DELIMITER, "}")) {
-        parseCmd();
-    }
+    parseLcom();
 
     consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o main.");
     consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar a classe principal.");
@@ -69,10 +67,7 @@ void Parser::parseDefMet() {
         consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o corpo do método.");
 
         parseDefVar();
-
-        while (!check(TokenType::RESERVED_WORD, "return")) {
-            parseCmd();
-        }
+        parseLcom();
 
         consume(TokenType::RESERVED_WORD, "return", "Esperado 'return' no final do método.");
         parseExp();
@@ -152,27 +147,52 @@ void Parser::parseDefCl() {
     }
 }
 
+void Parser::parseLcom() {
+    while (check(TokenType::IDENTIFIER) || 
+           check(TokenType::RESERVED_WORD, "if") || 
+           check(TokenType::RESERVED_WORD, "while") || 
+           check(TokenType::RESERVED_WORD, "System")) {
+        parseCmd();
+    }
+}
+
 void Parser::parseCmd() {
-    if (check(TokenType::DELIMITER, "{")) {
-        advance();
-        while (!check(TokenType::DELIMITER, "}")) {
-            parseCmd();
+    if (check(TokenType::IDENTIFIER)) {
+        Token id = advance();
+        if (check(TokenType::DELIMITER, "[")) {
+            advance();
+            parseExp();
+            consume(TokenType::DELIMITER, "]", "Esperado ']' na atribuição do vetor.");
         }
-        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco de comandos.");
+        consume(TokenType::OPERATOR, "=", "Esperado '=' na atribuição da variável '" + id.getLexeme() + "'.");
+        parseExp();
+        consume(TokenType::DELIMITER, ";", "Esperado ';' no fim da atribuição.");
+        
     } else if (check(TokenType::RESERVED_WORD, "if")) {
         advance();
         consume(TokenType::DELIMITER, "(", "Esperado '(' após 'if'.");
         parseExp();
         consume(TokenType::DELIMITER, ")", "Esperado ')' após expressão do 'if'.");
-        parseCmd();
-        consume(TokenType::RESERVED_WORD, "else", "Esperado 'else' após o comando do 'if'.");
-        parseCmd();
+        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do if.");
+        parseLcom();
+        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do if.");
+        
+        if (check(TokenType::RESERVED_WORD, "else")) {
+            advance();
+            consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do else.");
+            parseLcom();
+            consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do else.");
+        }
+        
     } else if (check(TokenType::RESERVED_WORD, "while")) {
         advance();
         consume(TokenType::DELIMITER, "(", "Esperado '(' após 'while'.");
         parseExp();
         consume(TokenType::DELIMITER, ")", "Esperado ')' após expressão do 'while'.");
-        parseCmd();
+        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do while.");
+        parseLcom();
+        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do while.");
+        
     } else if (check(TokenType::RESERVED_WORD, "System")) {
         advance();
         consume(TokenType::DELIMITER, ".", "Esperado '.' após System.");
@@ -183,62 +203,60 @@ void Parser::parseCmd() {
         parseExp();
         consume(TokenType::DELIMITER, ")", "Esperado ')'.");
         consume(TokenType::DELIMITER, ";", "Esperado ';' após println.");
-    } else if (check(TokenType::IDENTIFIER)) {
-        Token id = advance();
-        if (check(TokenType::DELIMITER, "[")) {
-            advance();
-            parseExp();
-            consume(TokenType::DELIMITER, "]", "Esperado ']' na atribuição do vetor.");
-        }
-        consume(TokenType::OPERATOR, "=", "Esperado '=' na atribuição da variável '" + id.getLexeme() + "'.");
-        parseExp();
-        consume(TokenType::DELIMITER, ";", "Esperado ';' no fim da atribuição.");
     } else {
-        throw error(peek(), "Comando inválido. Esperado '{', 'if', 'while', 'System' ou uma atribuição.");
-    }
-}
-
-void Parser::parseTermo() {
-    if (check(TokenType::RESERVED_WORD, "true") || check(TokenType::RESERVED_WORD, "false") || 
-        check(TokenType::RESERVED_WORD, "this") || check(TokenType::NUMBER)) {
-        advance();
-    } else if (check(TokenType::IDENTIFIER)) {
-        advance();
-    } else if (check(TokenType::RESERVED_WORD, "new")) {
-        advance();
-        if (check(TokenType::RESERVED_WORD, "int")) {
-            advance();
-            consume(TokenType::DELIMITER, "[", "Esperado '['.");
-            parseExp();
-            consume(TokenType::DELIMITER, "]", "Esperado ']'.");
-        } else if (check(TokenType::IDENTIFIER)) {
-            advance();
-            consume(TokenType::DELIMITER, "(", "Esperado '('.");
-            consume(TokenType::DELIMITER, ")", "Esperado ')'.");
-        } else {
-            throw error(peek(), "Esperado 'int' ou Identificador após 'new'.");
-        }
-    } else if (check(TokenType::OPERATOR, "!")) {
-        advance();
-        parseExp();
-    } else if (check(TokenType::DELIMITER, "(")) {
-        advance();
-        parseExp();
-        consume(TokenType::DELIMITER, ")", "Esperado ')'.");
-    } else {
-        throw error(peek(), "Expressão inválida. Encontrado: " + peek().getLexeme());
+        throw error(peek(), "Comando inválido. Esperado 'if', 'while', 'System' ou uma atribuição.");
     }
 }
 
 void Parser::parseExp() {
-    parseTermo();
+    parseAndExp();
+}
+
+void Parser::parseAndExp() {
+    parseRelExp();
+    while (check(TokenType::OPERATOR, "&&")) {
+        advance();
+        parseRelExp();
+    }
+}
+
+void Parser::parseRelExp() {
+    parseAddExp();
+    while (check(TokenType::OPERATOR, "<")) {
+        advance();
+        parseAddExp();
+    }
+}
+
+void Parser::parseAddExp() {
+    parseMulExp();
+    while (check(TokenType::OPERATOR, "+") || check(TokenType::OPERATOR, "-")) {
+        advance();
+        parseMulExp();
+    }
+}
+
+void Parser::parseMulExp() {
+    parseUnExp();
+    while (check(TokenType::OPERATOR, "*")) {
+        advance();
+        parseUnExp();
+    }
+}
+
+void Parser::parseUnExp() {
+    if (check(TokenType::OPERATOR, "!")) {
+        advance();
+        parseUnExp();
+    } else {
+        parsePsfExp();
+    }
+}
+
+void Parser::parsePsfExp() {
+    parsePriExp();
     while (true) {
-        if (check(TokenType::OPERATOR, "&&") || check(TokenType::OPERATOR, ">") ||
-            check(TokenType::OPERATOR, "+")  || check(TokenType::OPERATOR, "-") ||
-            check(TokenType::OPERATOR, "*")  || check(TokenType::OPERATOR, "<")) {
-            advance();
-            parseExp();
-        } else if (check(TokenType::DELIMITER, "[")) {
+        if (check(TokenType::DELIMITER, "[")) {
             advance();
             parseExp();
             consume(TokenType::DELIMITER, "]", "Esperado ']'.");
@@ -246,11 +264,13 @@ void Parser::parseExp() {
             advance();
             if (check(TokenType::RESERVED_WORD, "length")) {
                 advance();
-            } else {
-                parseExp();
+            } else if (check(TokenType::IDENTIFIER)) {
+                advance();
                 consume(TokenType::DELIMITER, "(", "Esperado '('.");
-                parseListExp();
+                parseLexp();
                 consume(TokenType::DELIMITER, ")", "Esperado ')'.");
+            } else {
+                throw error(peek(), "Esperado 'length' ou Identificador após '.'.");
             }
         } else {
             break;
@@ -258,9 +278,38 @@ void Parser::parseExp() {
     }
 }
 
-void Parser::parseListExp() {
+void Parser::parsePriExp() {
+    if (check(TokenType::DELIMITER, "(")) {
+        advance();
+        parseExp();
+        consume(TokenType::DELIMITER, ")", "Esperado ')'.");
+    } else if (check(TokenType::RESERVED_WORD, "true") || 
+               check(TokenType::RESERVED_WORD, "false") ||
+               check(TokenType::RESERVED_WORD, "this") ||
+               check(TokenType::NUMBER) ||
+               check(TokenType::IDENTIFIER)) {
+        advance();
+    } else if (check(TokenType::RESERVED_WORD, "new")) {
+        advance();
+        if (check(TokenType::IDENTIFIER)) {
+            advance();
+            consume(TokenType::DELIMITER, "(", "Esperado '('.");
+            consume(TokenType::DELIMITER, ")", "Esperado ')'.");
+        } else if (check(TokenType::RESERVED_WORD, "int")) {
+            advance();
+            consume(TokenType::DELIMITER, "[", "Esperado '['.");
+            parseExp();
+            consume(TokenType::DELIMITER, "]", "Esperado ']'.");
+        } else {
+            throw error(peek(), "Esperado Identificador ou 'int' após 'new'.");
+        }
+    } else {
+        throw error(peek(), "Expressão Primária inválida. Encontrado: " + peek().getLexeme());
+    }
+}
+
+void Parser::parseLexp() {
     if (check(TokenType::DELIMITER, ")")) return;
-    
     parseExp();
     while (check(TokenType::DELIMITER, ",")) {
         advance();

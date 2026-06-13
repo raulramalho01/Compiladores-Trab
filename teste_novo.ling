@@ -1,0 +1,22 @@
+class TesteNovo {
+    public static void main(String[] a) {
+        System.out.println(new Calculadora().somarEComparar(10, 5));
+    }
+}
+
+class Calculadora {
+    public int somarEComparar(int x, int y) {
+        int resultado;
+        boolean status;
+        
+        resultado = x + y * 2; // O parser deve processar y * 2 primeiro pela nova precedência!
+        
+        if (resultado < 30) {
+            status = true;
+        } else {
+            status = false;
+        }
+        
+        return resultado;
+    }
+}
