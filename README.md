@@ -50,6 +50,9 @@ Daí faça:
 .\src\bin\compilador.exe (windows)
 ./src/bin/compilador (linux)
 
+Novo comando de compilação usado na 2a unidade:
+g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor main.cpp -o src/bin/compilador
+
 
 # Technical Details
 

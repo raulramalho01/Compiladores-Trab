@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include "../lexer/Token.hpp"
 #include "SymbolTable.hpp"
+#include "AST.hpp"
+#include <memory>
 
 class Parser {
 private:
@@ -11,29 +13,31 @@ private:
     int current = 0;
     SymbolTable symbolTable;
 
-    void parseProg();
-    void parseMainC();
-    void parseDefMet();
+    // Onde antes era 'void parseProg();' e 'void parse();'
+    std::unique_ptr<ProgNode> parseProg();
+    std::unique_ptr<MainClassNode> parseMainC();
+    std::vector<std::unique_ptr<MethodNode>> parseDefMet();
+    std::vector<std::unique_ptr<ClassNode>> parseDefCl();
     std::string parseType();
     bool isType();
     void parseDefVar();
     void parseArgs();
-    void parseDefCl();
+    
     
     // Comandos
-    void parseLcom(); 
-    void parseCmd();
+    std::vector<std::unique_ptr<CmdNode>> parseLcom(); 
+    std::unique_ptr<CmdNode> parseCmd();
 
-    // Cascata de Precedência de Expressões
-    void parseExp();
-    void parseAndExp();
-    void parseRelExp();
-    void parseAddExp();
-    void parseMulExp();
-    void parseUnExp();
-    void parsePsfExp();
-    void parsePriExp();
-    void parseLexp();
+    // Cascata de Precedência de Expressões (Retornando Nós)
+    std::unique_ptr<ExpNode> parseExp();
+    std::unique_ptr<ExpNode> parseAndExp();
+    std::unique_ptr<ExpNode> parseRelExp();
+    std::unique_ptr<ExpNode> parseAddExp();
+    std::unique_ptr<ExpNode> parseMulExp();
+    std::unique_ptr<ExpNode> parseUnExp();
+    std::unique_ptr<ExpNode> parsePsfExp();
+    std::unique_ptr<ExpNode> parsePriExp();
+    std::vector<std::unique_ptr<ExpNode>> parseLexp(); // Retorna uma lista de argumentos
 
     // Funções Auxiliares
     Token consume(TokenType type, const std::string& errorMessage);
@@ -48,5 +52,5 @@ private:
 
 public:
     Parser(std::vector<Token> tokens);
-    void parse();
+    std::unique_ptr<ProgNode> parse();
 };

@@ -1,5 +1,6 @@
 #include "../lexer/Lexer.hpp"
 #include "../parser/Parser.hpp"
+#include "../parser/AST.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -60,11 +61,26 @@ int main(int argc, char* argv[]) {
         std::cout << "======================================\n\n";
     }
 
-    // 3. Executar Analisador Sintático
+    // 3. Executar Analisador Sintático e Gerar a AST
     Parser parser(tokens);
     
-    // O método parse() internamente já vai rodar e imprimir o Sucesso ou Erro Sintático
-    parser.parse();
+    try {
+        // Agora o parser nos devolve a raiz da árvore construída
+        std::unique_ptr<ProgNode> astRoot = parser.parse();
+
+        // Se a flag -ast estiver presente, nós disparamos a impressão
+        if (tem_flag(args, "-ast")) {
+            std::cout << "\n=== [DEBUG] ARVORE SINTATICA ABSTRATA (AST) ===\n";
+            if (astRoot) {
+                astRoot->print(0); // Começa a imprimir no nível 0 (sem recuo)
+            }
+            std::cout << "===============================================\n\n";
+        }
+        
+    } catch (const std::exception& e) {
+        // Se o parser estourar um erro sintático, ele é capturado aqui
+        std::cerr << "Falha na compilação.\n";
+    }
 
     return 0;
 }

@@ -4,76 +4,92 @@
 
 Parser::Parser(std::vector<Token> tokens) : tokens(std::move(tokens)), current(0) {}
 
-void Parser::parse() {
+std::unique_ptr<ProgNode> Parser::parse() {
     try {
-        parseProg();
+        // Captura a raiz da árvore gerada
+        std::unique_ptr<ProgNode> root = parseProg();
+        
         std::cout << "\n[SUCESSO] Código está correto sintaticamente!\n";
-        std::cout << symbolTable.toString();
+        // std::cout << symbolTable.toString(); // Pode deixar comentado se preferir focar na AST por enquanto
+        
+        return root; // Retorna a árvore para o main!
+        
     } catch (const std::runtime_error& e) {
         std::cerr << "\n[ERRO SINTÁTICO] " << e.what() << "\n";
+        return nullptr; // Se der erro sintático, retorna um ponteiro vazio
     }
 }
 
-void Parser::parseProg() {
-    parseMainC();
-    parseDefCl();
+std::unique_ptr<ProgNode> Parser::parseProg() {
+    auto mainClass = parseMainC();
+    auto classes = parseDefCl();
+    
     if (!isAtEnd()) {
         throw error(peek(), "Esperado fim de arquivo, mas encontrou " + peek().getLexeme());
     }
+    
+    return std::make_unique<ProgNode>(std::move(mainClass), std::move(classes));
 }
 
-void Parser::parseMainC() {
-    consume(TokenType::RESERVED_WORD, "class", "Esperado palavra reservada 'class' no início.");
-    Token className = consume(TokenType::IDENTIFIER, "Esperado nome da classe (Identificador).");
+std::unique_ptr<MainClassNode> Parser::parseMainC() {
+    consume(TokenType::RESERVED_WORD, "class", "Esperado 'class'");
+    Token className = consume(TokenType::IDENTIFIER, "Esperado nome da classe");
     symbolTable.add(className.getLexeme(), "class");
 
-    consume(TokenType::DELIMITER, "{", "Esperado '{' após nome da classe.");
-    consume(TokenType::RESERVED_WORD, "public", "Esperado 'public'.");
-    consume(TokenType::RESERVED_WORD, "static", "Esperado 'static'.");
-    consume(TokenType::RESERVED_WORD, "void", "Esperado 'void'.");
-    consume(TokenType::RESERVED_WORD, "main", "Esperado 'main'.");
-    consume(TokenType::DELIMITER, "(", "Esperado '('.");
-    consume(TokenType::RESERVED_WORD, "String", "Esperado 'String'.");
-    consume(TokenType::DELIMITER, "[", "Esperado '['.");
-    consume(TokenType::DELIMITER, "]", "Esperado ']'.");
-
-    Token argName = consume(TokenType::IDENTIFIER, "Esperado nome do argumento do main.");
+    consume(TokenType::DELIMITER, "{", "Esperado '{'");
+    consume(TokenType::RESERVED_WORD, "public", "Esperado 'public'");
+    consume(TokenType::RESERVED_WORD, "static", "Esperado 'static'");
+    consume(TokenType::RESERVED_WORD, "void", "Esperado 'void'");
+    consume(TokenType::RESERVED_WORD, "main", "Esperado 'main'");
+    consume(TokenType::DELIMITER, "(", "Esperado '('");
+    consume(TokenType::RESERVED_WORD, "String", "Esperado 'String'");
+    consume(TokenType::DELIMITER, "[", "Esperado '['");
+    consume(TokenType::DELIMITER, "]", "Esperado ']'");
+    
+    Token argName = consume(TokenType::IDENTIFIER, "Esperado nome do argumento");
     symbolTable.add(argName.getLexeme(), "String[]");
 
-    consume(TokenType::DELIMITER, ")", "Esperado ')'.");
-    consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o main.");
+    consume(TokenType::DELIMITER, ")", "Esperado ')'");
+    consume(TokenType::DELIMITER, "{", "Esperado '{'");
 
-    parseLcom();
+    // Captura todos os comandos executados no main
+    auto commands = parseLcom();
 
-    consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o main.");
-    consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar a classe principal.");
+    consume(TokenType::DELIMITER, "}", "Esperado '}'");
+    consume(TokenType::DELIMITER, "}", "Esperado '}'");
+
+    return std::make_unique<MainClassNode>(className.getLexeme(), std::move(commands));
 }
 
-void Parser::parseDefMet() {
+std::vector<std::unique_ptr<MethodNode>> Parser::parseDefMet() {
+    std::vector<std::unique_ptr<MethodNode>> methods;
+    
     while (check(TokenType::RESERVED_WORD, "public")) {
         advance();
-
         std::string tipoRetorno = parseType();
         Token nomeMetodo = consume(TokenType::IDENTIFIER, "Esperado nome do método.");
         symbolTable.add(nomeMetodo.getLexeme(), "Método (" + tipoRetorno + ")");
 
-        consume(TokenType::DELIMITER, "(", "Esperado '(' após o nome do método.");
-
+        consume(TokenType::DELIMITER, "(", "Esperado '('");
         if (!check(TokenType::DELIMITER, ")")) {
             parseArgs();
         }
-
-        consume(TokenType::DELIMITER, ")", "Esperado ')' para fechar os argumentos.");
-        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o corpo do método.");
+        consume(TokenType::DELIMITER, ")", "Esperado ')'");
+        consume(TokenType::DELIMITER, "{", "Esperado '{'");
 
         parseDefVar();
-        parseLcom();
+        
+        // Puxa a lógica do corpo
+        auto commands = parseLcom();
 
-        consume(TokenType::RESERVED_WORD, "return", "Esperado 'return' no final do método.");
-        parseExp();
-        consume(TokenType::DELIMITER, ";", "Esperado ';' após a expressão de retorno.");
-        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o método.");
+        consume(TokenType::RESERVED_WORD, "return", "Esperado 'return'");
+        auto returnExp = parseExp();
+        consume(TokenType::DELIMITER, ";", "Esperado ';'");
+        consume(TokenType::DELIMITER, "}", "Esperado '}'");
+        
+        methods.push_back(std::make_unique<MethodNode>(nomeMetodo.getLexeme(), tipoRetorno, std::move(commands), std::move(returnExp)));
     }
+    return methods;
 }
 
 std::string Parser::parseType() {
@@ -129,146 +145,185 @@ void Parser::parseArgs() {
     }
 }
 
-void Parser::parseDefCl() {
+std::vector<std::unique_ptr<ClassNode>> Parser::parseDefCl() {
+    std::vector<std::unique_ptr<ClassNode>> classes;
+    
     while (check(TokenType::RESERVED_WORD, "class")) {
         advance();
         Token nomeClasse = consume(TokenType::IDENTIFIER, "Esperado nome da classe.");
         symbolTable.add(nomeClasse.getLexeme(), "Classe");
 
+        std::string parentName = "";
         if (check(TokenType::RESERVED_WORD, "extends")) {
             advance();
-            consume(TokenType::IDENTIFIER, "Esperado nome da classe pai após 'extends'.");
+            Token parentToken = consume(TokenType::IDENTIFIER, "Esperado classe pai.");
+            parentName = parentToken.getLexeme();
         }
 
-        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o corpo da classe.");
+        consume(TokenType::DELIMITER, "{", "Esperado '{'");
         parseDefVar();
-        parseDefMet();
-        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar a classe.");
+        
+        // Puxa todos os métodos construídos
+        auto methods = parseDefMet();
+        
+        consume(TokenType::DELIMITER, "}", "Esperado '}'");
+        
+        classes.push_back(std::make_unique<ClassNode>(nomeClasse.getLexeme(), parentName, std::move(methods)));
     }
+    return classes;
 }
 
-void Parser::parseLcom() {
-    while (check(TokenType::IDENTIFIER) || 
-           check(TokenType::RESERVED_WORD, "if") || 
-           check(TokenType::RESERVED_WORD, "while") || 
-           check(TokenType::RESERVED_WORD, "System")) {
-        parseCmd();
+std::vector<std::unique_ptr<CmdNode>> Parser::parseLcom() {
+    std::vector<std::unique_ptr<CmdNode>> commands;
+    while (check(TokenType::IDENTIFIER) || check(TokenType::RESERVED_WORD, "if") || 
+           check(TokenType::RESERVED_WORD, "while") || check(TokenType::RESERVED_WORD, "System")) {
+        commands.push_back(parseCmd());
     }
+    return commands;
 }
 
-void Parser::parseCmd() {
+std::unique_ptr<CmdNode> Parser::parseCmd() {
     if (check(TokenType::IDENTIFIER)) {
         Token id = advance();
         if (check(TokenType::DELIMITER, "[")) {
             advance();
-            parseExp();
-            consume(TokenType::DELIMITER, "]", "Esperado ']' na atribuição do vetor.");
+            parseExp(); // Opcional: Criar nó de array assign depois se quiser refinar
+            consume(TokenType::DELIMITER, "]", "Esperado ']'");
         }
-        consume(TokenType::OPERATOR, "=", "Esperado '=' na atribuição da variável '" + id.getLexeme() + "'.");
-        parseExp();
-        consume(TokenType::DELIMITER, ";", "Esperado ';' no fim da atribuição.");
+        consume(TokenType::OPERATOR, "=", "Esperado '='");
+        auto exp = parseExp();
+        consume(TokenType::DELIMITER, ";", "Esperado ';'");
+        
+        return std::make_unique<AssignNode>(id.getLexeme(), std::move(exp));
         
     } else if (check(TokenType::RESERVED_WORD, "if")) {
         advance();
-        consume(TokenType::DELIMITER, "(", "Esperado '(' após 'if'.");
-        parseExp();
-        consume(TokenType::DELIMITER, ")", "Esperado ')' após expressão do 'if'.");
-        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do if.");
-        parseLcom();
-        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do if.");
+        consume(TokenType::DELIMITER, "(", "Esperado '('");
+        auto condition = parseExp();
+        consume(TokenType::DELIMITER, ")", "Esperado ')'");
+        consume(TokenType::DELIMITER, "{", "Esperado '{'");
         
+        auto ifBlock = parseLcom();
+        
+        consume(TokenType::DELIMITER, "}", "Esperado '}'");
+        
+        std::vector<std::unique_ptr<CmdNode>> elseBlock;
         if (check(TokenType::RESERVED_WORD, "else")) {
             advance();
-            consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do else.");
-            parseLcom();
-            consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do else.");
+            consume(TokenType::DELIMITER, "{", "Esperado '{'");
+            elseBlock = parseLcom();
+            consume(TokenType::DELIMITER, "}", "Esperado '}'");
         }
+        
+        return std::make_unique<IfNode>(std::move(condition), std::move(ifBlock), std::move(elseBlock));
         
     } else if (check(TokenType::RESERVED_WORD, "while")) {
         advance();
-        consume(TokenType::DELIMITER, "(", "Esperado '(' após 'while'.");
-        parseExp();
-        consume(TokenType::DELIMITER, ")", "Esperado ')' após expressão do 'while'.");
-        consume(TokenType::DELIMITER, "{", "Esperado '{' para iniciar o bloco do while.");
-        parseLcom();
-        consume(TokenType::DELIMITER, "}", "Esperado '}' para fechar o bloco do while.");
+        consume(TokenType::DELIMITER, "(", "Esperado '('");
+        auto condition = parseExp();
+        consume(TokenType::DELIMITER, ")", "Esperado ')'");
+        consume(TokenType::DELIMITER, "{", "Esperado '{'");
+        
+        auto block = parseLcom();
+        
+        consume(TokenType::DELIMITER, "}", "Esperado '}'");
+        
+        return std::make_unique<WhileNode>(std::move(condition), std::move(block));
         
     } else if (check(TokenType::RESERVED_WORD, "System")) {
         advance();
-        consume(TokenType::DELIMITER, ".", "Esperado '.' após System.");
-        consume(TokenType::RESERVED_WORD, "out", "Esperado 'out'.");
-        consume(TokenType::DELIMITER, ".", "Esperado '.' após out.");
-        consume(TokenType::RESERVED_WORD, "println", "Esperado 'println'.");
-        consume(TokenType::DELIMITER, "(", "Esperado '('.");
-        parseExp();
-        consume(TokenType::DELIMITER, ")", "Esperado ')'.");
-        consume(TokenType::DELIMITER, ";", "Esperado ';' após println.");
-    } else {
-        throw error(peek(), "Comando inválido. Esperado 'if', 'while', 'System' ou uma atribuição.");
+        consume(TokenType::DELIMITER, ".", "Esperado '.'");
+        consume(TokenType::RESERVED_WORD, "out", "Esperado 'out'");
+        consume(TokenType::DELIMITER, ".", "Esperado '.'");
+        consume(TokenType::RESERVED_WORD, "println", "Esperado 'println'");
+        consume(TokenType::DELIMITER, "(", "Esperado '('");
+        
+        auto exp = parseExp();
+        
+        consume(TokenType::DELIMITER, ")", "Esperado ')'");
+        consume(TokenType::DELIMITER, ";", "Esperado ';'");
+        
+        return std::make_unique<PrintNode>(std::move(exp));
     }
+    
+    throw error(peek(), "Comando inválido.");
 }
 
-void Parser::parseExp() {
-    parseAndExp();
+std::unique_ptr<ExpNode> Parser::parseExp() {
+    return parseAndExp();
 }
 
-void Parser::parseAndExp() {
-    parseRelExp();
+std::unique_ptr<ExpNode> Parser::parseAndExp() {
+    auto left = parseRelExp();
     while (check(TokenType::OPERATOR, "&&")) {
-        advance();
-        parseRelExp();
+        Token op = advance(); // Consome o '&&'
+        auto right = parseRelExp();
+        // Constrói o nó pai, engolindo a esquerda e a direita
+        left = std::make_unique<BinOpNode>(op.getLexeme(), std::move(left), std::move(right));
     }
+    return left;
 }
 
-void Parser::parseRelExp() {
-    parseAddExp();
+std::unique_ptr<ExpNode> Parser::parseRelExp() {
+    auto left = parseAddExp();
     while (check(TokenType::OPERATOR, "<")) {
-        advance();
-        parseAddExp();
+        Token op = advance();
+        auto right = parseAddExp();
+        left = std::make_unique<BinOpNode>(op.getLexeme(), std::move(left), std::move(right));
     }
+    return left;
 }
 
-void Parser::parseAddExp() {
-    parseMulExp();
+std::unique_ptr<ExpNode> Parser::parseAddExp() {
+    auto left = parseMulExp();
     while (check(TokenType::OPERATOR, "+") || check(TokenType::OPERATOR, "-")) {
-        advance();
-        parseMulExp();
+        Token op = advance();
+        auto right = parseMulExp();
+        left = std::make_unique<BinOpNode>(op.getLexeme(), std::move(left), std::move(right));
     }
+    return left;
 }
 
-void Parser::parseMulExp() {
-    parseUnExp();
+std::unique_ptr<ExpNode> Parser::parseMulExp() {
+    auto left = parseUnExp();
     while (check(TokenType::OPERATOR, "*")) {
-        advance();
-        parseUnExp();
+        Token op = advance();
+        auto right = parseUnExp();
+        left = std::make_unique<BinOpNode>(op.getLexeme(), std::move(left), std::move(right));
     }
+    return left;
 }
 
-void Parser::parseUnExp() {
+std::unique_ptr<ExpNode> Parser::parseUnExp() {
     if (check(TokenType::OPERATOR, "!")) {
-        advance();
-        parseUnExp();
+        Token op = advance();
+        auto exp = parseUnExp();
+        return std::make_unique<UnaryOpNode>(op.getLexeme(), std::move(exp));
     } else {
-        parsePsfExp();
+        return parsePsfExp();
     }
 }
 
-void Parser::parsePsfExp() {
-    parsePriExp();
+std::unique_ptr<ExpNode> Parser::parsePsfExp() {
+    auto exp = parsePriExp();
+    
     while (true) {
         if (check(TokenType::DELIMITER, "[")) {
             advance();
-            parseExp();
+            auto indexExp = parseExp();
             consume(TokenType::DELIMITER, "]", "Esperado ']'.");
+            exp = std::make_unique<ArrayAccessNode>(std::move(exp), std::move(indexExp));
         } else if (check(TokenType::DELIMITER, ".")) {
             advance();
             if (check(TokenType::RESERVED_WORD, "length")) {
                 advance();
+                // Opcional: Se quiser, crie um LengthNode no AST.hpp. Por enquanto, ignoramos.
             } else if (check(TokenType::IDENTIFIER)) {
-                advance();
+                Token methodId = advance();
                 consume(TokenType::DELIMITER, "(", "Esperado '('.");
-                parseLexp();
+                auto args = parseLexp();
                 consume(TokenType::DELIMITER, ")", "Esperado ')'.");
+                // Opcional: Aqui iria o MethodCallNode
             } else {
                 throw error(peek(), "Esperado 'length' ou Identificador após '.'.");
             }
@@ -276,30 +331,43 @@ void Parser::parsePsfExp() {
             break;
         }
     }
+    return exp;
 }
 
-void Parser::parsePriExp() {
+std::unique_ptr<ExpNode> Parser::parsePriExp() {
     if (check(TokenType::DELIMITER, "(")) {
         advance();
-        parseExp();
+        auto exp = parseExp();
         consume(TokenType::DELIMITER, ")", "Esperado ')'.");
-    } else if (check(TokenType::RESERVED_WORD, "true") || 
-               check(TokenType::RESERVED_WORD, "false") ||
-               check(TokenType::RESERVED_WORD, "this") ||
-               check(TokenType::NUMBER) ||
-               check(TokenType::IDENTIFIER)) {
+        return exp; // O parêntese é só sintático, a AST guarda só a lógica!
+    } else if (check(TokenType::RESERVED_WORD, "true")) {
         advance();
+        return std::make_unique<BoolLiteralNode>(true);
+    } else if (check(TokenType::RESERVED_WORD, "false")) {
+        advance();
+        return std::make_unique<BoolLiteralNode>(false);
+    } else if (check(TokenType::RESERVED_WORD, "this")) {
+        advance();
+        return std::make_unique<ThisNode>();
+    } else if (check(TokenType::NUMBER)) {
+        Token num = advance();
+        return std::make_unique<IntLiteralNode>(std::stoi(num.getLexeme()));
+    } else if (check(TokenType::IDENTIFIER)) {
+        Token id = advance();
+        return std::make_unique<IdExpNode>(id.getLexeme());
     } else if (check(TokenType::RESERVED_WORD, "new")) {
         advance();
         if (check(TokenType::IDENTIFIER)) {
-            advance();
+            Token className = advance();
             consume(TokenType::DELIMITER, "(", "Esperado '('.");
             consume(TokenType::DELIMITER, ")", "Esperado ')'.");
+            return nullptr; // Opcional: NewObjNode
         } else if (check(TokenType::RESERVED_WORD, "int")) {
             advance();
             consume(TokenType::DELIMITER, "[", "Esperado '['.");
-            parseExp();
+            auto sizeExp = parseExp();
             consume(TokenType::DELIMITER, "]", "Esperado ']'.");
+            return nullptr; // Opcional: NewArrayNode
         } else {
             throw error(peek(), "Esperado Identificador ou 'int' após 'new'.");
         }
@@ -308,13 +376,16 @@ void Parser::parsePriExp() {
     }
 }
 
-void Parser::parseLexp() {
-    if (check(TokenType::DELIMITER, ")")) return;
-    parseExp();
+std::vector<std::unique_ptr<ExpNode>> Parser::parseLexp() {
+    std::vector<std::unique_ptr<ExpNode>> args;
+    if (check(TokenType::DELIMITER, ")")) return args;
+    
+    args.push_back(parseExp());
     while (check(TokenType::DELIMITER, ",")) {
         advance();
-        parseExp();
+        args.push_back(parseExp());
     }
+    return args;
 }
 
 Token Parser::consume(TokenType type, const std::string& errorMessage) {
