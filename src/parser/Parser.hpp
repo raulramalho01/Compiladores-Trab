@@ -53,4 +53,7 @@ private:
 public:
     Parser(std::vector<Token> tokens);
     std::unique_ptr<ProgNode> parse();
+    
+    // NOVO: Expõe a tabela de símbolos (somente leitura) para o main.cpp imprimir
+    const SymbolTable& getSymbolTable() const { return symbolTable; }
 };

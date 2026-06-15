@@ -34,20 +34,32 @@ std::unique_ptr<ProgNode> Parser::parseProg() {
 std::unique_ptr<MainClassNode> Parser::parseMainC() {
     consume(TokenType::RESERVED_WORD, "class", "Esperado 'class'");
     Token className = consume(TokenType::IDENTIFIER, "Esperado nome da classe");
-    symbolTable.add(className.getLexeme(), "class");
+    
+    // ATUALIZADO: Classe Main pertence ao escopo Global
+    symbolTable.add(className.getLexeme(), "class", "Global");
 
     consume(TokenType::DELIMITER, "{", "Esperado '{'");
+    
+    // NOVO: Entra no escopo da Classe Main
+    symbolTable.enterScope("Classe " + className.getLexeme());
+    
     consume(TokenType::RESERVED_WORD, "public", "Esperado 'public'");
     consume(TokenType::RESERVED_WORD, "static", "Esperado 'static'");
     consume(TokenType::RESERVED_WORD, "void", "Esperado 'void'");
     consume(TokenType::RESERVED_WORD, "main", "Esperado 'main'");
+
+    // NOVO LUGAR: Abre o escopo do main ANTES de ler o argumento
+    symbolTable.enterScope("Método main");
+
     consume(TokenType::DELIMITER, "(", "Esperado '('");
     consume(TokenType::RESERVED_WORD, "String", "Esperado 'String'");
     consume(TokenType::DELIMITER, "[", "Esperado '['");
     consume(TokenType::DELIMITER, "]", "Esperado ']'");
     
     Token argName = consume(TokenType::IDENTIFIER, "Esperado nome do argumento");
-    symbolTable.add(argName.getLexeme(), "String[]");
+    
+    // ATUALIZADO: O argumento do main é um parâmetro
+    symbolTable.add(argName.getLexeme(), "String[]", "Parâmetro");
 
     consume(TokenType::DELIMITER, ")", "Esperado ')'");
     consume(TokenType::DELIMITER, "{", "Esperado '{'");
@@ -56,7 +68,14 @@ std::unique_ptr<MainClassNode> Parser::parseMainC() {
     auto commands = parseLcom();
 
     consume(TokenType::DELIMITER, "}", "Esperado '}'");
+    
+    // NOVO: Sai do escopo do Método Main
+    symbolTable.exitScope();
+    
     consume(TokenType::DELIMITER, "}", "Esperado '}'");
+    
+    // NOVO: Sai do escopo da Classe Main
+    symbolTable.exitScope();
 
     return std::make_unique<MainClassNode>(className.getLexeme(), std::move(commands));
 }
@@ -68,7 +87,12 @@ std::vector<std::unique_ptr<MethodNode>> Parser::parseDefMet() {
         advance();
         std::string tipoRetorno = parseType();
         Token nomeMetodo = consume(TokenType::IDENTIFIER, "Esperado nome do método.");
-        symbolTable.add(nomeMetodo.getLexeme(), "Método (" + tipoRetorno + ")");
+        
+        // ATUALIZADO: Adicionando o 3º parâmetro indicando que é um Método
+        symbolTable.add(nomeMetodo.getLexeme(), tipoRetorno, "Método");
+
+        // NOVO LUGAR: Entra no escopo do método ANTES de ler os parâmetros
+        symbolTable.enterScope("Método " + nomeMetodo.getLexeme());
 
         consume(TokenType::DELIMITER, "(", "Esperado '('");
         if (!check(TokenType::DELIMITER, ")")) {
@@ -87,9 +111,77 @@ std::vector<std::unique_ptr<MethodNode>> Parser::parseDefMet() {
         consume(TokenType::DELIMITER, ";", "Esperado ';'");
         consume(TokenType::DELIMITER, "}", "Esperado '}'");
         
+        // NOVO: Sai do escopo do método
+        symbolTable.exitScope();
+        
         methods.push_back(std::make_unique<MethodNode>(nomeMetodo.getLexeme(), tipoRetorno, std::move(commands), std::move(returnExp)));
     }
     return methods;
+}
+
+std::vector<std::unique_ptr<ClassNode>> Parser::parseDefCl() {
+    std::vector<std::unique_ptr<ClassNode>> classes;
+    
+    while (check(TokenType::RESERVED_WORD, "class")) {
+        advance();
+        Token nomeClasse = consume(TokenType::IDENTIFIER, "Esperado nome da classe.");
+        
+        // ATUALIZADO: A classe em si pertence ao escopo Global
+        symbolTable.add(nomeClasse.getLexeme(), "Classe", "Global");
+
+        std::string parentName = "";
+        if (check(TokenType::RESERVED_WORD, "extends")) {
+            advance();
+            Token parentToken = consume(TokenType::IDENTIFIER, "Esperado classe pai.");
+            parentName = parentToken.getLexeme();
+        }
+
+        consume(TokenType::DELIMITER, "{", "Esperado '{'");
+        
+        // NOVO: Entra no escopo da classe
+        symbolTable.enterScope("Classe " + nomeClasse.getLexeme());
+
+        parseDefVar();
+        
+        // Puxa todos os métodos construídos
+        auto methods = parseDefMet();
+        
+        consume(TokenType::DELIMITER, "}", "Esperado '}'");
+        
+        // NOVO: Sai do escopo da classe
+        symbolTable.exitScope();
+        
+        classes.push_back(std::make_unique<ClassNode>(nomeClasse.getLexeme(), parentName, std::move(methods)));
+    }
+    return classes;
+}
+
+void Parser::parseDefVar() {
+    while (isType()) {
+        std::string tipoDaVariavel = parseType();
+        Token nomeDaVariavel = consume(TokenType::IDENTIFIER, "Esperado nome da variável.");
+        consume(TokenType::DELIMITER, ";", "Esperado ';' após declaração da variável '" + nomeDaVariavel.getLexeme() + "'.");
+        
+        // ATUALIZADO: O escopo dinâmico resolve se é atributo ou variável local
+        symbolTable.add(nomeDaVariavel.getLexeme(), tipoDaVariavel, "Variável/Atributo");
+    }
+}
+
+void Parser::parseArgs() {
+    std::string tipoArg = parseType();
+    Token nomeArg = consume(TokenType::IDENTIFIER, "Esperado nome do argumento.");
+    
+    // ATUALIZADO: Informando que é um parâmetro
+    symbolTable.add(nomeArg.getLexeme(), tipoArg, "Parâmetro");
+
+    while (check(TokenType::DELIMITER, ",")) {
+        advance();
+        tipoArg = parseType();
+        nomeArg = consume(TokenType::IDENTIFIER, "Esperado nome do argumento após ','.");
+        
+        // ATUALIZADO
+        symbolTable.add(nomeArg.getLexeme(), tipoArg, "Parâmetro");
+    }
 }
 
 std::string Parser::parseType() {
@@ -121,56 +213,6 @@ bool Parser::isType() {
         }
     }
     return false;
-}
-
-void Parser::parseDefVar() {
-    while (isType()) {
-        std::string tipoDaVariavel = parseType();
-        Token nomeDaVariavel = consume(TokenType::IDENTIFIER, "Esperado nome da variável.");
-        consume(TokenType::DELIMITER, ";", "Esperado ';' após declaração da variável '" + nomeDaVariavel.getLexeme() + "'.");
-        symbolTable.add(nomeDaVariavel.getLexeme(), tipoDaVariavel);
-    }
-}
-
-void Parser::parseArgs() {
-    std::string tipoArg = parseType();
-    Token nomeArg = consume(TokenType::IDENTIFIER, "Esperado nome do argumento.");
-    symbolTable.add(nomeArg.getLexeme(), tipoArg);
-
-    while (check(TokenType::DELIMITER, ",")) {
-        advance();
-        tipoArg = parseType();
-        nomeArg = consume(TokenType::IDENTIFIER, "Esperado nome do argumento após ','.");
-        symbolTable.add(nomeArg.getLexeme(), tipoArg);
-    }
-}
-
-std::vector<std::unique_ptr<ClassNode>> Parser::parseDefCl() {
-    std::vector<std::unique_ptr<ClassNode>> classes;
-    
-    while (check(TokenType::RESERVED_WORD, "class")) {
-        advance();
-        Token nomeClasse = consume(TokenType::IDENTIFIER, "Esperado nome da classe.");
-        symbolTable.add(nomeClasse.getLexeme(), "Classe");
-
-        std::string parentName = "";
-        if (check(TokenType::RESERVED_WORD, "extends")) {
-            advance();
-            Token parentToken = consume(TokenType::IDENTIFIER, "Esperado classe pai.");
-            parentName = parentToken.getLexeme();
-        }
-
-        consume(TokenType::DELIMITER, "{", "Esperado '{'");
-        parseDefVar();
-        
-        // Puxa todos os métodos construídos
-        auto methods = parseDefMet();
-        
-        consume(TokenType::DELIMITER, "}", "Esperado '}'");
-        
-        classes.push_back(std::make_unique<ClassNode>(nomeClasse.getLexeme(), parentName, std::move(methods)));
-    }
-    return classes;
 }
 
 std::vector<std::unique_ptr<CmdNode>> Parser::parseLcom() {

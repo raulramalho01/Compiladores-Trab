@@ -82,5 +82,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Falha na compilação.\n";
     }
 
+    // Se a flag -ts estiver presente, nós disparamos a impressão da tabela
+    if (tem_flag(args, "-ts")) {
+        std::cout << parser.getSymbolTable().toString(); // Vai precisar de um getter simples no Parser.hpp!
+    }    
+
     return 0;
 }
