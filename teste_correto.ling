@@ -1,0 +1,30 @@
+class MainAventura {
+    public static void main (String[] args) {
+        System.out.println(new SistemaMagia().conjuracao(100));
+    }
+}
+
+class SistemaMagia {
+    int manaGlobal;
+
+    public int conjuracao(int manaInicial) {
+        int custoFeitico;
+        boolean conjurou;
+        
+        manaGlobal = manaInicial;
+        custoFeitico = 30;
+
+        if (custoFeitico < manaGlobal) {
+            manaGlobal = manaGlobal - custoFeitico;
+            conjurou = true;
+        } else {
+            conjurou = false;
+        }
+
+        while (0 < manaGlobal) {
+            manaGlobal = manaGlobal - 10;
+        }
+
+        return manaGlobal;
+    }
+}

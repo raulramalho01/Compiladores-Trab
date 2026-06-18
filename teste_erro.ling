@@ -1,0 +1,31 @@
+class MainFalha {
+    public static void main (String[] args) {
+        System.out.println(new Mago().testarArmadilhas());
+    }
+}
+
+class CascaVazia {
+    // Erro 1: O professor exigiu que as classes não fossem vazias.
+}
+
+class Mago extends Aventureiro {
+    public int testarArmadilhas() {
+        int dano;
+        boolean vivo;
+        
+        dano = 50;
+        vivo = true;
+
+        // Erro 2: Atribuição de tipos incompatíveis (boolean em int)
+        dano = vivo;
+
+        // Erro 3: Operador lógico && misturado com inteiros
+        if (dano && vivo) {
+            dano = dano + 10;
+        } else {
+            dano = dano - 10;
+        }
+
+        return dano;
+    }
+}

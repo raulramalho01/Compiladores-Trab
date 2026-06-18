@@ -11,7 +11,7 @@ class Calculadora {
         
         resultado = x + y * 2; // O parser deve processar y * 2 primeiro pela nova precedência!
         
-        if (resultado < 30) {
+        if (resultado + 30) {
             status = true;
         } else {
             status = false;

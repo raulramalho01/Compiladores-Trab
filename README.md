@@ -51,7 +51,9 @@ Daí faça:
 ./src/bin/compilador (linux)
 
 Novo comando de compilação usado na 2a unidade:
-g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor main.cpp -o src/bin/compilador
+g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
+
+.\src\bin\compilador.exe teste_novo.ling -tokens -ast -ts
 
 
 # Technical Details

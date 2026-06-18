@@ -227,16 +227,29 @@ std::vector<std::unique_ptr<CmdNode>> Parser::parseLcom() {
 std::unique_ptr<CmdNode> Parser::parseCmd() {
     if (check(TokenType::IDENTIFIER)) {
         Token id = advance();
+        
+        SymbolInfo* info = symbolTable.resolve(id.getLexeme());
+        if (!info) {
+            throw std::runtime_error("Erro Semântico: Tentativa de atribuição em variável não declarada '" + id.getLexeme() + "'.");
+        }
+
         if (check(TokenType::DELIMITER, "[")) {
             advance();
-            parseExp(); // Opcional: Criar nó de array assign depois se quiser refinar
+            auto indexExp = parseExp(); // AGORA NÓS GUARDAMOS O ÍNDICE
             consume(TokenType::DELIMITER, "]", "Esperado ']'");
+            consume(TokenType::OPERATOR, "=", "Esperado '='");
+            auto valueExp = parseExp();
+            consume(TokenType::DELIMITER, ";", "Esperado ';'");
+            
+            // Retorna o novo nó específico para vetores
+            return std::make_unique<ArrayAssignNode>(id.getLexeme(), info->type, std::move(indexExp), std::move(valueExp));
         }
+        
+        // Se não for vetor, segue a lógica normal da atribuição simples
         consume(TokenType::OPERATOR, "=", "Esperado '='");
         auto exp = parseExp();
         consume(TokenType::DELIMITER, ";", "Esperado ';'");
-        
-        return std::make_unique<AssignNode>(id.getLexeme(), std::move(exp));
+        return std::make_unique<AssignNode>(id.getLexeme(), info->type, std::move(exp));
         
     } else if (check(TokenType::RESERVED_WORD, "if")) {
         advance();
@@ -396,7 +409,15 @@ std::unique_ptr<ExpNode> Parser::parsePriExp() {
         return std::make_unique<IntLiteralNode>(std::stoi(num.getLexeme()));
     } else if (check(TokenType::IDENTIFIER)) {
         Token id = advance();
-        return std::make_unique<IdExpNode>(id.getLexeme());
+        
+        // Consulta a tabela AGORA, enquanto o escopo ainda está aberto
+        SymbolInfo* info = symbolTable.resolve(id.getLexeme());
+        if (!info) {
+            throw std::runtime_error("Erro Semântico: Variável '" + id.getLexeme() + "' não declarada.");
+        }
+        
+        // Passa o tipo encontrado para o construtor do nó
+        return std::make_unique<IdExpNode>(id.getLexeme(), info->type);
     } else if (check(TokenType::RESERVED_WORD, "new")) {
         advance();
         if (check(TokenType::IDENTIFIER)) {

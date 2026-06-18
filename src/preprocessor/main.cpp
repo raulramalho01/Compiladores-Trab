@@ -76,9 +76,20 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "===============================================\n\n";
         }
+
+        if (astRoot) {
+            // Cria uma cópia da tabela final do parser para não precisar de const_cast
+            SymbolTable st = parser.getSymbolTable(); 
+            
+            // Dispara a verificação em cascata a partir da raiz!
+            astRoot->checkSemantic(st);
+            
+            std::cout << "\n[SUCESSO] Análise Semântica concluída sem erros de tipos ou declaracoes!\n";
+        }
         
     } catch (const std::exception& e) {
         // Se o parser estourar um erro sintático, ele é capturado aqui
+        std::cerr << "\n" << e.what() << "\n";
         std::cerr << "Falha na compilação.\n";
     }
 
