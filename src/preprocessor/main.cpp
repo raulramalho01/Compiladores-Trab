@@ -1,41 +1,42 @@
 #include "../lexer/Lexer.hpp"
 #include "../parser/Parser.hpp"
 #include "../parser/AST.hpp"
+#include "../parser/SemanticContext.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <string>
 
-// Função auxiliar para verificar se uma flag foi passada no terminal
 bool tem_flag(const std::vector<std::string>& args, const std::string& flag) {
-    for (const auto& arg : args) {
+    for (const auto& arg : args)
         if (arg == flag) return true;
-    }
     return false;
 }
 
 int main(int argc, char* argv[]) {
-    // Transforma os argumentos do terminal em um vetor de strings para facilitar
     std::vector<std::string> args(argv, argv + argc);
 
     if (argc < 2) {
         std::cout << "Uso correto: ./compilador <arquivo_fonte> [flags]\n";
-        std::cout << "Flags disponíveis:\n";
-        std::cout << "  -tokens       Printar a lista de tokens gerada\n";
-        std::cout << "  -ts           Printar a tabela de símbolos\n";
+        std::cout << "Flags disponiveis:\n";
+        std::cout << "  -tokens       Imprime a lista de tokens gerada\n";
+        std::cout << "  -ast          Imprime a Arvore Sintatica Abstrata\n";
+        std::cout << "  -ts           Imprime a tabela de simbolos\n";
+        std::cout << "  -lex-strict   Para no PRIMEIRO erro lexico (em vez de listar todos)\n";
+        std::cout << "  -suggest      Mostra a linha do erro e sugestoes de correcao\n";
         return 1;
     }
 
     std::string arquivo_entrada = args[1];
+    bool lexStrict = tem_flag(args, "-lex-strict");
+    bool suggest   = tem_flag(args, "-suggest");
 
-    // 1. Ler o arquivo-fonte diretamente (sem pré-processador isolado)
     std::ifstream inFile(arquivo_entrada);
     if (!inFile.is_open()) {
-        std::cerr << "Erro: Não foi possível abrir o arquivo: " << arquivo_entrada << "\n";
+        std::cerr << "Erro: Nao foi possivel abrir o arquivo: " << arquivo_entrada << "\n";
         return 1;
     }
-
     std::stringstream buffer;
     buffer << inFile.rdbuf();
     std::string input = buffer.str();
@@ -44,59 +45,71 @@ int main(int argc, char* argv[]) {
     std::cout << ">>> PROCESSANDO: " << arquivo_entrada << "\n";
     std::cout << "========================================================\n";
 
-    // 2. Executar Analisador Léxico (Nativo, tratando espaços e comentários)
+    // 1. ANALISADOR LEXICO
     Lexer lexer(input);
     std::vector<Token> tokens = lexer.tokenize();
 
-    // Se o usuário passou a flag "-tokens", nós imprimimos a lista
     if (tem_flag(args, "-tokens")) {
         std::cout << "\n=== [DEBUG] LISTA DE TOKENS GERADA ===\n";
-        for (const auto& token : tokens) {
-            // Se o token for EOF, não precisamos dar print em lexeme vazio
-            if (token.getType() != TokenType::TOKEN_EOF) {
-                std::cout << "Linha " << token.getLine() << ", Col " << token.getColumn() 
+        for (const auto& token : tokens)
+            if (token.getType() != TokenType::TOKEN_EOF)
+                std::cout << "Linha " << token.getLine() << ", Col " << token.getColumn()
                           << " | Texto: '" << token.getLexeme() << "'\n";
-            }
-        }
         std::cout << "======================================\n\n";
     }
 
-    // 3. Executar Analisador Sintático e Gerar a AST
-    Parser parser(tokens);
-    
+    // 1b. TRATAMENTO DE ERROS LEXICOS
+    // Por padrao: reporta TODOS os erros lexicos e aborta.
+    // Com -lex-strict: morre no PRIMEIRO erro lexico encontrado.
+    int errosLexicos = 0;
+    for (const auto& token : tokens) {
+        if (token.getType() == TokenType::ERROR_TOKEN) {
+            errosLexicos++;
+            std::cerr << "[ERRO LEXICO] Linha " << token.getLine() << ", coluna "
+                      << token.getColumn() << ": caractere/simbolo invalido '"
+                      << token.getLexeme() << "'.\n";
+            if (lexStrict) {
+                std::cerr << "Compilacao abortada no primeiro erro lexico (-lex-strict).\n";
+                return 1;
+            }
+        }
+    }
+    if (errosLexicos > 0) {
+        std::cerr << "Foram encontrados " << errosLexicos
+                  << " erro(s) lexico(s). Compilacao abortada.\n";
+        return 1;
+    }
+
+    // 2. ANALISADOR SINTATICO (constroi a AST)
+    Parser parser(tokens, input, suggest);
+
     try {
-        // Agora o parser nos devolve a raiz da árvore construída
         std::unique_ptr<ProgNode> astRoot = parser.parse();
 
-        // Se a flag -ast estiver presente, nós disparamos a impressão
         if (tem_flag(args, "-ast")) {
             std::cout << "\n=== [DEBUG] ARVORE SINTATICA ABSTRATA (AST) ===\n";
-            if (astRoot) {
-                astRoot->print(0); // Começa a imprimir no nível 0 (sem recuo)
-            }
+            if (astRoot) astRoot->print(0);
             std::cout << "===============================================\n\n";
         }
 
         if (astRoot) {
-            // Cria uma cópia da tabela final do parser para não precisar de const_cast
-            SymbolTable st = parser.getSymbolTable(); 
-            
-            // Dispara a verificação em cascata a partir da raiz!
-            astRoot->checkSemantic(st);
-            
-            std::cout << "\n[SUCESSO] Análise Semântica concluída sem erros de tipos ou declaracoes!\n";
+            // 3. ANALISE SEMANTICA EM DUAS PASSADAS
+            ClassTable classTable;
+            astRoot->buildClassTable(classTable);   // 1a passada: grafo de classes/herança
+
+            SemanticContext ctx(classTable);
+            astRoot->checkSemantic(ctx);             // 2a passada: tipos, dispatch, init
+
+            std::cout << "\n[SUCESSO] Analise Semantica concluida sem erros de tipos, "
+                         "declaracoes, heranca ou inicializacao!\n";
         }
-        
     } catch (const std::exception& e) {
-        // Se o parser estourar um erro sintático, ele é capturado aqui
         std::cerr << "\n" << e.what() << "\n";
-        std::cerr << "Falha na compilação.\n";
+        std::cerr << "Falha na compilacao.\n";
     }
 
-    // Se a flag -ts estiver presente, nós disparamos a impressão da tabela
-    if (tem_flag(args, "-ts")) {
-        std::cout << parser.getSymbolTable().toString(); // Vai precisar de um getter simples no Parser.hpp!
-    }    
+    if (tem_flag(args, "-ts"))
+        std::cout << parser.getSymbolTable().toString();
 
     return 0;
 }
