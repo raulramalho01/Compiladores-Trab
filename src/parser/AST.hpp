@@ -4,7 +4,13 @@
 #include <string>
 #include <memory>
 #include <stdexcept>
-#include "SymbolTable.hpp"
+#include "SemanticContext.hpp"
+
+// Declaração simples de variável/campo/parâmetro (tipo + nome)
+struct VarDecl {
+    std::string type;
+    std::string name;
+};
 
 // ==========================================================
 // 1. CLASSE BASE DA ÁRVORE
@@ -13,13 +19,11 @@ class ASTNode {
 public:
     virtual ~ASTNode() = default;
     virtual void print(int nivel) const = 0;
-    virtual std::string checkSemantic(SymbolTable& st) = 0;
+    virtual std::string checkSemantic(SemanticContext& ctx) = 0;
 
 protected:
     void imprimirIndentacao(int nivel) const {
-        for (int i = 0; i < nivel; ++i) {
-            std::cout << "  |";
-        }
+        for (int i = 0; i < nivel; ++i) std::cout << "  |";
         std::cout << "__";
     }
 };
@@ -37,7 +41,7 @@ public:
         imprimirIndentacao(nivel);
         std::cout << "IntLiteral: " << value << "\n";
     }
-    std::string checkSemantic(SymbolTable& st) override { return "int"; }
+    std::string checkSemantic(SemanticContext&) override { return "int"; }
 };
 
 class BoolLiteralNode : public ExpNode {
@@ -48,22 +52,49 @@ public:
         imprimirIndentacao(nivel);
         std::cout << "BoolLiteral: " << (value ? "true" : "false") << "\n";
     }
-    std::string checkSemantic(SymbolTable& st) override { return "boolean"; }
+    std::string checkSemantic(SemanticContext&) override { return "boolean"; }
 };
 
 class IdExpNode : public ExpNode {
     std::string name;
-    std::string type; // NOVO: O nó agora guarda o seu próprio tipo!
 public:
-    IdExpNode(std::string n, std::string t) : name(n), type(t) {}
+    IdExpNode(std::string n) : name(std::move(n)) {}
+    const std::string& getName() const { return name; }
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "IdExp: " << name << "\n";
     }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        // 1) Procura como variável local / parâmetro / campo (campos herdados já
+        //    foram empilhados no escopo da classe -> herança de atributos).
+        std::string t = ctx.lookup(name);
+        if (t.empty()) {
+            // 2) Tenta como campo herdado diretamente pela hierarquia de classes
+            t = ctx.classes.resolveFieldType(ctx.currentClass, name);
+        }
+        if (t.empty()) {
+            throw std::runtime_error("Erro Semantico: Variavel '" + name + "' nao declarada.");
+        }
+        // Garantia de inicialização: se for uma variável local, precisa ter sido atribuída
+        if (ctx.isLocal(name) && !ctx.isAssigned(name)) {
+            throw std::runtime_error("Erro Semantico: A variavel local '" + name +
+                "' pode ser usada antes de ser inicializada.");
+        }
+        return t;
+    }
+};
 
-    std::string checkSemantic(SymbolTable& st) override {
-        // Não precisa mais consultar a tabela aqui, ele já sabe quem ele é!
-        return type; 
+class ThisNode : public ExpNode {
+public:
+    void print(int nivel) const override {
+        imprimirIndentacao(nivel);
+        std::cout << "ThisExp\n";
+    }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (ctx.currentClass.empty()) {
+            throw std::runtime_error("Erro Semantico: 'this' usado fora de uma classe.");
+        }
+        return ctx.currentClass;
     }
 };
 
@@ -73,33 +104,27 @@ class BinOpNode : public ExpNode {
     std::unique_ptr<ExpNode> right;
 public:
     BinOpNode(std::string oper, std::unique_ptr<ExpNode> l, std::unique_ptr<ExpNode> r)
-        : op(oper), left(std::move(l)), right(std::move(r)) {}
-    
+        : op(std::move(oper)), left(std::move(l)), right(std::move(r)) {}
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "BinOp [" << op << "]\n";
         if (left) left->print(nivel + 1);
         if (right) right->print(nivel + 1);
     }
-
-    std::string checkSemantic(SymbolTable& st) override {
-        std::string tLeft = left->checkSemantic(st);
-        std::string tRight = right->checkSemantic(st);
-
+    std::string checkSemantic(SemanticContext& ctx) override {
+        std::string tLeft = left->checkSemantic(ctx);
+        std::string tRight = right->checkSemantic(ctx);
         if (op == "+" || op == "-" || op == "*") {
-            if (tLeft != "int" || tRight != "int") {
-                throw std::runtime_error("Erro Semântico: Operador '" + op + "' exige operandos do tipo 'int'.");
-            }
+            if (tLeft != "int" || tRight != "int")
+                throw std::runtime_error("Erro Semantico: Operador '" + op + "' exige operandos do tipo 'int'.");
             return "int";
         } else if (op == "<") {
-            if (tLeft != "int" || tRight != "int") {
-                throw std::runtime_error("Erro Semântico: Operador '<' exige operandos do tipo 'int'.");
-            }
+            if (tLeft != "int" || tRight != "int")
+                throw std::runtime_error("Erro Semantico: Operador '<' exige operandos do tipo 'int'.");
             return "boolean";
         } else if (op == "&&") {
-            if (tLeft != "boolean" || tRight != "boolean") {
-                throw std::runtime_error("Erro Semântico: Operador '&&' exige operandos do tipo 'boolean'.");
-            }
+            if (tLeft != "boolean" || tRight != "boolean")
+                throw std::runtime_error("Erro Semantico: Operador '&&' exige operandos do tipo 'boolean'.");
             return "boolean";
         }
         return "void";
@@ -111,22 +136,21 @@ class UnaryOpNode : public ExpNode {
     std::unique_ptr<ExpNode> exp;
 public:
     UnaryOpNode(std::string oper, std::unique_ptr<ExpNode> expression)
-        : op(oper), exp(std::move(expression)) {}
+        : op(std::move(oper)), exp(std::move(expression)) {}
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "UnaryOp [" << op << "]\n";
         if (exp) exp->print(nivel + 1);
     }
-    std::string checkSemantic(SymbolTable& st) override { return exp->checkSemantic(st); }
-};
-
-class ThisNode : public ExpNode {
-public:
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "ThisExp\n";
+    std::string checkSemantic(SemanticContext& ctx) override {
+        std::string t = exp->checkSemantic(ctx);
+        if (op == "!") {
+            if (t != "boolean")
+                throw std::runtime_error("Erro Semantico: Operador '!' exige operando do tipo 'boolean'.");
+            return "boolean";
+        }
+        return t;
     }
-    std::string checkSemantic(SymbolTable& st) override { return "this"; }
 };
 
 class ArrayAccessNode : public ExpNode {
@@ -141,10 +165,109 @@ public:
         if (arrayExp) arrayExp->print(nivel + 1);
         if (indexExp) indexExp->print(nivel + 1);
     }
-    std::string checkSemantic(SymbolTable& st) override { 
-        arrayExp->checkSemantic(st); 
-        indexExp->checkSemantic(st); 
-        return "int"; 
+    std::string checkSemantic(SemanticContext& ctx) override {
+        std::string tArr = arrayExp->checkSemantic(ctx);
+        std::string tIdx = indexExp->checkSemantic(ctx);
+        if (tArr != "int[]")
+            throw std::runtime_error("Erro Semantico: Acesso indexado exige um vetor 'int[]'.");
+        if (tIdx != "int")
+            throw std::runtime_error("Erro Semantico: O indice de um vetor deve ser do tipo 'int'.");
+        return "int";
+    }
+};
+
+class LengthNode : public ExpNode {
+    std::unique_ptr<ExpNode> arrayExp;
+public:
+    LengthNode(std::unique_ptr<ExpNode> arr) : arrayExp(std::move(arr)) {}
+    void print(int nivel) const override {
+        imprimirIndentacao(nivel);
+        std::cout << "Length\n";
+        if (arrayExp) arrayExp->print(nivel + 1);
+    }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (arrayExp->checkSemantic(ctx) != "int[]")
+            throw std::runtime_error("Erro Semantico: '.length' so pode ser aplicado a um vetor 'int[]'.");
+        return "int";
+    }
+};
+
+class NewArrayNode : public ExpNode {
+    std::unique_ptr<ExpNode> sizeExp;
+public:
+    NewArrayNode(std::unique_ptr<ExpNode> sz) : sizeExp(std::move(sz)) {}
+    void print(int nivel) const override {
+        imprimirIndentacao(nivel);
+        std::cout << "NewArray (int[])\n";
+        if (sizeExp) sizeExp->print(nivel + 1);
+    }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (sizeExp->checkSemantic(ctx) != "int")
+            throw std::runtime_error("Erro Semantico: O tamanho de 'new int[]' deve ser do tipo 'int'.");
+        return "int[]";
+    }
+};
+
+class NewObjectNode : public ExpNode {
+    std::string className;
+public:
+    NewObjectNode(std::string n) : className(std::move(n)) {}
+    void print(int nivel) const override {
+        imprimirIndentacao(nivel);
+        std::cout << "NewObject [" << className << "]\n";
+    }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (!ctx.classes.isDefined(className))
+            throw std::runtime_error("Erro Semantico: Tentativa de instanciar a classe '" +
+                className + "', que nao foi declarada.");
+        return className;
+    }
+};
+
+class MethodCallNode : public ExpNode {
+    std::unique_ptr<ExpNode> receiver;
+    std::string method;
+    std::vector<std::unique_ptr<ExpNode>> args;
+public:
+    MethodCallNode(std::unique_ptr<ExpNode> recv, std::string m,
+                   std::vector<std::unique_ptr<ExpNode>> a)
+        : receiver(std::move(recv)), method(std::move(m)), args(std::move(a)) {}
+    void print(int nivel) const override {
+        imprimirIndentacao(nivel);
+        std::cout << "MethodCall [" << method << "]\n";
+        imprimirIndentacao(nivel + 1); std::cout << "Receiver:\n";
+        if (receiver) receiver->print(nivel + 2);
+        if (!args.empty()) {
+            imprimirIndentacao(nivel + 1); std::cout << "Args:\n";
+            for (const auto& a : args) if (a) a->print(nivel + 2);
+        }
+    }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        std::string recvType = receiver->checkSemantic(ctx);
+        if (!ctx.classes.isDefined(recvType)) {
+            throw std::runtime_error("Erro Semantico: Chamada do metodo '" + method +
+                "' sobre algo que nao e um objeto (tipo '" + recvType + "').");
+        }
+        // Despacho: resolve o método subindo na hierarquia a partir do tipo do receptor
+        const MethodSig* sig = ctx.classes.resolveMethod(recvType, method);
+        if (!sig) {
+            throw std::runtime_error("Erro Semantico: O metodo '" + method +
+                "' nao existe na classe '" + recvType + "' nem em suas superclasses.");
+        }
+        if (args.size() != sig->paramTypes.size()) {
+            throw std::runtime_error("Erro Semantico: O metodo '" + method + "' espera " +
+                std::to_string(sig->paramTypes.size()) + " argumento(s), mas recebeu " +
+                std::to_string(args.size()) + ".");
+        }
+        for (size_t i = 0; i < args.size(); ++i) {
+            std::string at = args[i]->checkSemantic(ctx);
+            if (!ctx.classes.assignableTo(sig->paramTypes[i], at)) {
+                throw std::runtime_error("Erro Semantico: Argumento " + std::to_string(i + 1) +
+                    " do metodo '" + method + "' esperava '" + sig->paramTypes[i] +
+                    "', mas recebeu '" + at + "'.");
+            }
+        }
+        return sig->returnType;
     }
 };
 
@@ -153,60 +276,63 @@ public:
 // ==========================================================
 class CmdNode : public ASTNode {};
 
-// ... (dentro de COMANDOS) ...
 class AssignNode : public CmdNode {
     std::string id;
-    std::string varType; // NOVO: Guarda o tipo da variável que vai receber o valor
     std::unique_ptr<ExpNode> exp;
 public:
-    AssignNode(std::string name, std::string vType, std::unique_ptr<ExpNode> expression)
-        : id(name), varType(vType), exp(std::move(expression)) {}
+    AssignNode(std::string name, std::unique_ptr<ExpNode> expression)
+        : id(std::move(name)), exp(std::move(expression)) {}
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "Assign: " << id << "\n";
         if (exp) exp->print(nivel + 1);
     }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        // Avalia o lado direito ANTES de marcar o destino como inicializado
+        std::string expType = exp->checkSemantic(ctx);
 
-    std::string checkSemantic(SymbolTable& st) override {
-        std::string expType = exp->checkSemantic(st);
-        
-        // Compara diretamente com o tipo salvo na criação do nó
-        if (varType != expType) {
-            throw std::runtime_error("Erro Semântico: Incompatibilidade de tipos na variável '" + id + "'. Esperado '" + varType + "', recebido '" + expType + "'.");
+        std::string varType = ctx.lookup(id);
+        if (varType.empty()) varType = ctx.classes.resolveFieldType(ctx.currentClass, id);
+        if (varType.empty())
+            throw std::runtime_error("Erro Semantico: Atribuicao a variavel nao declarada '" + id + "'.");
+
+        if (!ctx.classes.assignableTo(varType, expType)) {
+            throw std::runtime_error("Erro Semantico: Incompatibilidade de tipos na variavel '" + id +
+                "'. Esperado '" + varType + "', recebido '" + expType + "'.");
         }
+        // Marca como definitivamente atribuída (definite assignment)
+        ctx.markAssigned(id);
         return "void";
     }
 };
 
 class ArrayAssignNode : public CmdNode {
     std::string id;
-    std::string varType;
-    std::unique_ptr<ExpNode> indexExp; // Guarda o índice do vetor
-    std::unique_ptr<ExpNode> valueExp; // Guarda o valor a ser atribuído
+    std::unique_ptr<ExpNode> indexExp;
+    std::unique_ptr<ExpNode> valueExp;
 public:
-    ArrayAssignNode(std::string name, std::string vType, std::unique_ptr<ExpNode> idx, std::unique_ptr<ExpNode> val)
-        : id(name), varType(vType), indexExp(std::move(idx)), valueExp(std::move(val)) {}
-
+    ArrayAssignNode(std::string name, std::unique_ptr<ExpNode> idx, std::unique_ptr<ExpNode> val)
+        : id(std::move(name)), indexExp(std::move(idx)), valueExp(std::move(val)) {}
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "ArrayAssign: " << id << "\n";
         if (indexExp) indexExp->print(nivel + 1);
         if (valueExp) valueExp->print(nivel + 1);
     }
-
-    std::string checkSemantic(SymbolTable& st) override {
-        // O índice obrigatoriamente tem que ser um inteiro
-        if (indexExp->checkSemantic(st) != "int") {
-            throw std::runtime_error("Erro Semântico: O índice do vetor '" + id + "' deve ser do tipo 'int'.");
-        }
-        
-        // Se a variável é int[], o valor atribuído a ela deve ser int
-        std::string expectedType = varType.substr(0, varType.length() - 2); // Transforma "int[]" em "int"
-        std::string valType = valueExp->checkSemantic(st);
-        
-        if (expectedType != valType) {
-            throw std::runtime_error("Erro Semântico: Incompatibilidade de tipos na atribuição do vetor '" + id + "'. Esperado '" + expectedType + "', recebido '" + valType + "'.");
-        }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        std::string varType = ctx.lookup(id);
+        if (varType.empty()) varType = ctx.classes.resolveFieldType(ctx.currentClass, id);
+        if (varType.empty())
+            throw std::runtime_error("Erro Semantico: Atribuicao a vetor nao declarado '" + id + "'.");
+        if (varType != "int[]")
+            throw std::runtime_error("Erro Semantico: A variavel '" + id + "' nao e um vetor 'int[]'.");
+        if (ctx.isLocal(id) && !ctx.isAssigned(id))
+            throw std::runtime_error("Erro Semantico: O vetor local '" + id +
+                "' pode ser usado antes de ser inicializado (faltou 'new int[]').");
+        if (indexExp->checkSemantic(ctx) != "int")
+            throw std::runtime_error("Erro Semantico: O indice do vetor '" + id + "' deve ser do tipo 'int'.");
+        if (valueExp->checkSemantic(ctx) != "int")
+            throw std::runtime_error("Erro Semantico: O valor atribuido ao vetor '" + id + "' deve ser do tipo 'int'.");
         return "void";
     }
 };
@@ -220,8 +346,8 @@ public:
         std::cout << "Print\n";
         if (exp) exp->print(nivel + 1);
     }
-    std::string checkSemantic(SymbolTable& st) override {
-        if (exp) exp->checkSemantic(st);
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (exp) exp->checkSemantic(ctx);
         return "void";
     }
 };
@@ -231,32 +357,40 @@ class IfNode : public CmdNode {
     std::vector<std::unique_ptr<CmdNode>> ifBlock;
     std::vector<std::unique_ptr<CmdNode>> elseBlock;
 public:
-    IfNode(std::unique_ptr<ExpNode> cond, std::vector<std::unique_ptr<CmdNode>> ifB, std::vector<std::unique_ptr<CmdNode>> elseB)
+    IfNode(std::unique_ptr<ExpNode> cond, std::vector<std::unique_ptr<CmdNode>> ifB,
+           std::vector<std::unique_ptr<CmdNode>> elseB)
         : condition(std::move(cond)), ifBlock(std::move(ifB)), elseBlock(std::move(elseB)) {}
-
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "If\n";
         if (condition) condition->print(nivel + 1);
-        
         imprimirIndentacao(nivel); std::cout << "Then:\n";
         for (const auto& cmd : ifBlock) if (cmd) cmd->print(nivel + 1);
-        
         if (!elseBlock.empty()) {
             imprimirIndentacao(nivel); std::cout << "Else:\n";
             for (const auto& cmd : elseBlock) if (cmd) cmd->print(nivel + 1);
         }
     }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (condition && condition->checkSemantic(ctx) != "boolean")
+            throw std::runtime_error("Erro Semantico: A condicao do 'if' deve ser do tipo 'boolean'.");
 
-    std::string checkSemantic(SymbolTable& st) override {
-        if (condition) {
-            std::string condType = condition->checkSemantic(st);
-            if (condType != "boolean") {
-                throw std::runtime_error("Erro Semântico: A condição do 'if' deve ser do tipo 'boolean'.");
-            }
-        }
-        for (auto& cmd : ifBlock) if (cmd) cmd->checkSemantic(st);
-        for (auto& cmd : elseBlock) if (cmd) cmd->checkSemantic(st);
+        // Fluxo de inicialização: uma variável só é "definitivamente atribuída"
+        // após o if se for atribuída em AMBOS os ramos.
+        std::set<std::string> before = ctx.assignedVars;
+
+        ctx.assignedVars = before;
+        for (auto& cmd : ifBlock) if (cmd) cmd->checkSemantic(ctx);
+        std::set<std::string> afterThen = ctx.assignedVars;
+
+        ctx.assignedVars = before;
+        for (auto& cmd : elseBlock) if (cmd) cmd->checkSemantic(ctx);
+        std::set<std::string> afterElse = ctx.assignedVars;
+
+        if (elseBlock.empty())
+            ctx.assignedVars = before; // sem else, nada é garantido
+        else
+            ctx.assignedVars = intersectAssigned(afterThen, afterElse);
         return "void";
     }
 };
@@ -267,59 +401,89 @@ class WhileNode : public CmdNode {
 public:
     WhileNode(std::unique_ptr<ExpNode> cond, std::vector<std::unique_ptr<CmdNode>> blk)
         : condition(std::move(cond)), block(std::move(blk)) {}
-
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "While\n";
         if (condition) condition->print(nivel + 1);
-        
         imprimirIndentacao(nivel); std::cout << "Do:\n";
         for (const auto& cmd : block) if (cmd) cmd->print(nivel + 1);
     }
-
-    std::string checkSemantic(SymbolTable& st) override {
-        if (condition) {
-            std::string condType = condition->checkSemantic(st);
-            if (condType != "boolean") {
-                throw std::runtime_error("Erro Semântico: A condição do 'while' deve ser do tipo 'boolean'.");
-            }
-        }
-        for (auto& cmd : block) if (cmd) cmd->checkSemantic(st);
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (condition && condition->checkSemantic(ctx) != "boolean")
+            throw std::runtime_error("Erro Semantico: A condicao do 'while' deve ser do tipo 'boolean'.");
+        // O corpo pode não executar; nada que ele atribua é garantido depois.
+        std::set<std::string> before = ctx.assignedVars;
+        for (auto& cmd : block) if (cmd) cmd->checkSemantic(ctx);
+        ctx.assignedVars = before;
         return "void";
     }
 };
 
 // ==========================================================
-// 4. ESTRUTURAS GLOBAIS (Métodos, Classes e Programa)
+// 4. ESTRUTURAS GLOBAIS
 // ==========================================================
 class MethodNode : public ASTNode {
     std::string name;
     std::string returnType;
+    std::vector<VarDecl> params;
+    std::vector<VarDecl> locals;
     std::vector<std::unique_ptr<CmdNode>> commands;
     std::unique_ptr<ExpNode> returnExp;
 public:
-    MethodNode(std::string n, std::string t, std::vector<std::unique_ptr<CmdNode>> cmds, std::unique_ptr<ExpNode> ret)
-        : name(n), returnType(t), commands(std::move(cmds)), returnExp(std::move(ret)) {}
+    MethodNode(std::string n, std::string t, std::vector<VarDecl> p, std::vector<VarDecl> l,
+               std::vector<std::unique_ptr<CmdNode>> cmds, std::unique_ptr<ExpNode> ret)
+        : name(std::move(n)), returnType(std::move(t)), params(std::move(p)),
+          locals(std::move(l)), commands(std::move(cmds)), returnExp(std::move(ret)) {}
+
+    const std::string& getName() const { return name; }
+    const std::string& getReturnType() const { return returnType; }
+    const std::vector<VarDecl>& getParams() const { return params; }
 
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
-        std::cout << "Method [" << returnType << " " << name << "()]\n";
+        std::cout << "Method [" << returnType << " " << name << "(";
+        for (size_t i = 0; i < params.size(); ++i)
+            std::cout << (i ? ", " : "") << params[i].type << " " << params[i].name;
+        std::cout << ")]\n";
         for (const auto& cmd : commands) if (cmd) cmd->print(nivel + 1);
-        
         imprimirIndentacao(nivel + 1); std::cout << "Return:\n";
         if (returnExp) returnExp->print(nivel + 2);
     }
 
-    std::string checkSemantic(SymbolTable& st) override {
-        for (auto& cmd : commands) {
-            if (cmd) cmd->checkSemantic(st);
+    std::string checkSemantic(SemanticContext& ctx) override {
+        ctx.pushScope();
+        std::string savedReturn = ctx.currentReturnType;
+        std::set<std::string> savedLocals = ctx.declaredLocals;
+        std::set<std::string> savedAssigned = ctx.assignedVars;
+
+        ctx.currentReturnType = returnType;
+        ctx.declaredLocals.clear();
+        ctx.assignedVars.clear();
+
+        // Parâmetros: já chegam inicializados
+        for (auto& p : params) {
+            ctx.declare(p.name, p.type);
+            ctx.markAssigned(p.name);
         }
+        // Locais: declarados, mas ainda NÃO inicializados
+        for (auto& l : locals) {
+            ctx.declare(l.name, l.type);
+            ctx.declaredLocals.insert(l.name);
+        }
+
+        for (auto& cmd : commands) if (cmd) cmd->checkSemantic(ctx);
+
         if (returnExp) {
-            std::string retType = returnExp->checkSemantic(st);
-            if (retType != returnType) {
-                throw std::runtime_error("Erro Semântico: O método '" + name + "' prometeu retornar '" + returnType + "', mas tentou retornar '" + retType + "'.");
-            }
+            std::string retType = returnExp->checkSemantic(ctx);
+            if (!ctx.classes.assignableTo(returnType, retType))
+                throw std::runtime_error("Erro Semantico: O metodo '" + name + "' prometeu retornar '" +
+                    returnType + "', mas tentou retornar '" + retType + "'.");
         }
+
+        ctx.currentReturnType = savedReturn;
+        ctx.declaredLocals = savedLocals;
+        ctx.assignedVars = savedAssigned;
+        ctx.popScope();
         return "void";
     }
 };
@@ -327,34 +491,67 @@ public:
 class ClassNode : public ASTNode {
     std::string name;
     std::string parent;
+    std::vector<VarDecl> fields;
     std::vector<std::unique_ptr<MethodNode>> methods;
 public:
-    ClassNode(std::string n, std::string p, std::vector<std::unique_ptr<MethodNode>> m)
-        : name(n), parent(p), methods(std::move(m)) {}
+    ClassNode(std::string n, std::string p, std::vector<VarDecl> f,
+              std::vector<std::unique_ptr<MethodNode>> m)
+        : name(std::move(n)), parent(std::move(p)), fields(std::move(f)), methods(std::move(m)) {}
+
+    const std::string& getName() const { return name; }
+    const std::string& getParent() const { return parent; }
+    const std::vector<VarDecl>& getFields() const { return fields; }
+    const std::vector<std::unique_ptr<MethodNode>>& getMethods() const { return methods; }
 
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "Class " << name << (parent.empty() ? "" : " extends " + parent) << "\n";
+        for (const auto& f : fields) {
+            imprimirIndentacao(nivel + 1);
+            std::cout << "Field: " << f.type << " " << f.name << "\n";
+        }
         for (const auto& met : methods) if (met) met->print(nivel + 1);
     }
 
-    std::string checkSemantic(SymbolTable& st) override {
-        if (methods.empty()) {
-            throw std::runtime_error("Erro Semântico: A classe '" + name + "' não pode ser vazia (sem atributos ou métodos).");
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (methods.empty() && fields.empty())
+            throw std::runtime_error("Erro Semantico: A classe '" + name +
+                "' nao pode ser vazia (sem atributos ou metodos).");
+
+        ctx.currentClass = name;
+        ctx.pushScope();
+
+        // Herança de atributos: empilha os campos desta classe E de todos os
+        // ancestrais, para que métodos enxerguem campos herdados.
+        std::string cur = name;
+        std::set<std::string> visited;
+        while (!cur.empty() && !visited.count(cur)) {
+            visited.insert(cur);
+            ClassInfo* ci = ctx.classes.get(cur);
+            if (!ci) break;
+            for (auto& fld : ci->fields)
+                if (ctx.lookup(fld.first).empty()) // a classe mais derivada tem prioridade
+                    ctx.declare(fld.first, fld.second);
+            cur = ci->parent;
         }
-        for (auto& met : methods) {
-            if (met) met->checkSemantic(st);
-        }
+
+        for (auto& met : methods) if (met) met->checkSemantic(ctx);
+
+        ctx.popScope();
+        ctx.currentClass.clear();
         return "void";
     }
 };
 
 class MainClassNode : public ASTNode {
     std::string name;
+    std::string argName;
     std::vector<std::unique_ptr<CmdNode>> commands;
 public:
-    MainClassNode(std::string n, std::vector<std::unique_ptr<CmdNode>> cmds)
-        : name(n), commands(std::move(cmds)) {}
+    MainClassNode(std::string n, std::string arg, std::vector<std::unique_ptr<CmdNode>> cmds)
+        : name(std::move(n)), argName(std::move(arg)), commands(std::move(cmds)) {}
+
+    const std::string& getName() const { return name; }
 
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
@@ -362,10 +559,16 @@ public:
         for (const auto& cmd : commands) if (cmd) cmd->print(nivel + 1);
     }
 
-    std::string checkSemantic(SymbolTable& st) override {
-        for (auto& cmd : commands) {
-            if (cmd) cmd->checkSemantic(st);
-        }
+    std::string checkSemantic(SemanticContext& ctx) override {
+        ctx.currentClass = name;
+        ctx.pushScope();
+        ctx.declaredLocals.clear();
+        ctx.assignedVars.clear();
+        ctx.declare(argName, "String[]");
+        ctx.markAssigned(argName);
+        for (auto& cmd : commands) if (cmd) cmd->checkSemantic(ctx);
+        ctx.popScope();
+        ctx.currentClass.clear();
         return "void";
     }
 };
@@ -376,21 +579,49 @@ class ProgNode : public ASTNode {
 public:
     ProgNode(std::unique_ptr<MainClassNode> mc, std::vector<std::unique_ptr<ClassNode>> cls)
         : mainClass(std::move(mc)), classes(std::move(cls)) {}
-    
+
     void print(int nivel) const override {
         imprimirIndentacao(nivel);
         std::cout << "ProgramRoot\n";
         if (mainClass) mainClass->print(nivel + 1);
-        for (const auto& c : classes) {
-            if (c) c->print(nivel + 1);
-        }
+        for (const auto& c : classes) if (c) c->print(nivel + 1);
     }
 
-    std::string checkSemantic(SymbolTable& st) override {
-        if (mainClass) mainClass->checkSemantic(st);
+    // 1a PASSADA: coleta classes, campos e assinaturas de métodos no grafo global
+    void buildClassTable(ClassTable& ct) {
+        if (mainClass) ct.addClass(mainClass->getName(), "");
         for (auto& c : classes) {
-            if (c) c->checkSemantic(st);
+            if (!c) continue;
+            if (!ct.addClass(c->getName(), c->getParent()))
+                throw std::runtime_error("Erro Semantico: A classe '" + c->getName() +
+                    "' foi declarada mais de uma vez.");
+            ClassInfo* ci = ct.get(c->getName());
+            for (auto& f : c->getFields()) {
+                if (ci->fields.count(f.name))
+                    throw std::runtime_error("Erro Semantico: Atributo '" + f.name +
+                        "' declarado duas vezes na classe '" + c->getName() + "'.");
+                ci->fields[f.name] = f.type;
+            }
+            for (auto& m : c->getMethods()) {
+                if (ci->methods.count(m->getName()))
+                    throw std::runtime_error("Erro Semantico: Metodo '" + m->getName() +
+                        "' declarado duas vezes na classe '" + c->getName() + "'.");
+                MethodSig sig;
+                sig.returnType = m->getReturnType();
+                sig.declaringClass = c->getName();
+                for (auto& p : m->getParams()) {
+                    sig.paramTypes.push_back(p.type);
+                    sig.paramNames.push_back(p.name);
+                }
+                ci->methods[m->getName()] = sig;
+            }
         }
+        ct.verify(); // pais existem, sem ciclos, overrides compatíveis
+    }
+
+    std::string checkSemantic(SemanticContext& ctx) override {
+        if (mainClass) mainClass->checkSemantic(ctx);
+        for (auto& c : classes) if (c) c->checkSemantic(ctx);
         return "void";
     }
 };
