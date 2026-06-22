@@ -46,11 +46,14 @@ Abra o terminal na raiz do projeto (`Compiladores-Trab`) e execute o seguinte co
 g++ -std=c++17 src/preprocessor/preprocessor.cpp src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
 ```
 
-Entre na pasta raíz, com:
+### Entre na pasta raíz, com:
+
 .\src\bin\compilador.exe (windows)
+
 ./src/bin/compilador (linux)
 
-Novo comando de compilação usado na 2a unidade(novo)
+### Novo comando de compilação usado na 2a unidade(NOVO)
+
 g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
 
 .\src\bin\compilador.exe teste_novo.ling -tokens -ast -ts
