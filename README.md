@@ -24,25 +24,27 @@ g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.
 
 ./src/bin/compilador teste_correto.ling
 
-# sem flag: só compila e diz se passou (sintático + semântico)
+## Tabela de flags
+
+### sem flag: só compila e diz se passou (sintático + semântico)
 ./src/bin/compilador teste_correto.ling
 
-# -tokens : imprime a lista de tokens
+### -tokens : imprime a lista de tokens
 ./src/bin/compilador teste_correto.ling -tokens
 
-# -ast : imprime a árvore sintática (mostra os nós novos: MethodCall, NewObject...)
+### -ast : imprime a árvore sintática (mostra os nós novos: MethodCall, NewObject...)
 ./src/bin/compilador teste_correto.ling -ast
 
-# -ts : imprime a tabela de símbolos
+### -ts : imprime a tabela de símbolos
 ./src/bin/compilador teste_correto.ling -ts
 
-# -lex-strict : para no PRIMEIRO erro léxico (padrão é listar todos)
+### -lex-strict : para no PRIMEIRO erro léxico (padrão é listar todos)
 ./src/bin/compilador arquivo_com_erro_lexico.ling -lex-strict
 
-# -suggest : mostra a linha do erro com ^ e uma sugestão de correção
+### -suggest : mostra a linha do erro com ^ e uma sugestão de correção
 ./src/bin/compilador arquivo_com_erro_sintatico.ling -suggest
 
-# Technical Details
+### Technical Details
 
 In this project we used C++ v. 17 and GCC GNU compiler.
 
