@@ -1,7 +1,7 @@
 # Compiladores---Trab
 In this repository, we created a small compiled programming language that targets a subset of Assembler language.
 
-# How to compile the preprocessor
+# How to compile the preprocessor(deprecated)
 
 Inside Compiladores-Trab folder, try:
 
@@ -15,7 +15,7 @@ Then, with the compiled src/bin/test file:
 
 >./src/bin/test src/your_input_java_file.java src/bin/your_formated_java_file.java
 
-# How to compile the lexer
+# How to compile the lexer(deprecated)
 
 Inside Compiladores-Trab folder, try:
 
@@ -23,7 +23,7 @@ Inside Compiladores-Trab folder, try:
 
 >java -cp src lexer.Main
 
-# How to compile the parser
+# How to compile the parser(deprecated)
 
 Inside Compiladores-Trab folder, try:
 
@@ -46,15 +46,16 @@ Abra o terminal na raiz do projeto (`Compiladores-Trab`) e execute o seguinte co
 g++ -std=c++17 src/preprocessor/preprocessor.cpp src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
 ```
 
-Daí faça:
+Entre na pasta raíz, com:
 .\src\bin\compilador.exe (windows)
 ./src/bin/compilador (linux)
 
-Novo comando de compilação usado na 2a unidade:
+Novo comando de compilação usado na 2a unidade(novo)
 g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.cpp src/preprocessor/main.cpp -o src/bin/compilador
 
 .\src\bin\compilador.exe teste_novo.ling -tokens -ast -ts
 
+./src/bin/compilador teste_correto.ling
 
 # Technical Details
 
