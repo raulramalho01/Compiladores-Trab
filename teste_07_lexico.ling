@@ -1,0 +1,10 @@
+// -lex-strict
+class FalhaLexica {
+    public static void main(String[] args) {
+        int numero@;       // Erro 1: O caractere '@' não existe na linguagem
+        boolean #flag;     // Erro 2: O caractere '#' é inválido
+        
+        numero@ = 10;
+        System.out.println(numero@ ? 5 : 0); // Erro 3: O caractere '?' (ternário) não existe em Mini-Java
+    }
+}

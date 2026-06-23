@@ -1,0 +1,18 @@
+class TesteCiclo {
+    public static void main(String[] args) {
+        System.out.println(new Mago().lancarFogo());
+    }
+}
+
+class Mago extends Arcano {
+    public int lancarFogo() { 
+        return 10; 
+    }
+}
+
+// ERRO: Arcano herda de Mago, que herda de Arcano...
+class Arcano extends Mago {
+    public int lancarGelo() { 
+        return 5; 
+    }
+}

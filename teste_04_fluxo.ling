@@ -1,0 +1,26 @@
+class TesteFluxo {
+    public static void main(String[] args) {
+        System.out.println(new Feitico().calcularDano());
+    }
+}
+
+class Feitico {
+    public int calcularDano() {
+        int danoBase;
+        int multiplicador;
+        boolean critico;
+
+        critico = true;
+
+        if (critico) {
+            multiplicador = 2;
+            danoBase = 20;
+        } else {
+            // ERRO: Atribui a danoBase, mas ESQUECE o multiplicador!
+            danoBase = 10; 
+        }
+
+        // ERRO SEMÂNTICO: 'multiplicador' pode ser usado antes de ser inicializado.
+        return danoBase * multiplicador;
+    }
+}

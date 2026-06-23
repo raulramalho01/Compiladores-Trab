@@ -1,0 +1,25 @@
+class TesteTipos {
+    public static void main(String[] args) {
+        System.out.println(new Inventario().guardarItem());
+    }
+}
+
+// ERRO 1: A classe não tem atributos nem métodos (Casca Vazia)
+class ItemFantasma {
+
+}
+
+class Inventario {
+    public int guardarItem() {
+        int[] slots;
+        boolean cheio;
+
+        slots = new int[5];
+        cheio = true;
+
+        // ERRO 2: Tentando atribuir um 'boolean' numa posição que exige 'int'
+        slots[0] = cheio;
+
+        return 1;
+    }
+}

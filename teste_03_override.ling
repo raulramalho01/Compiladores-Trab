@@ -1,0 +1,18 @@
+class TesteOverride {
+    public static void main(String[] args) {
+        System.out.println(new InimigoChefe().atacar());
+    }
+}
+
+class Inimigo {
+    public int atacar() { 
+        return 10; 
+    }
+}
+
+class InimigoChefe extends Inimigo {
+    // ERRO: Tentando sobrescrever um método int retornando boolean
+    public boolean atacar() { 
+        return true; 
+    }
+}

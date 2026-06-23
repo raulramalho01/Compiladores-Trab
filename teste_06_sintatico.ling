@@ -1,0 +1,20 @@
+// -suggest
+class TesteSugestao {
+    public static void main(String[] args) {
+        System.out.println(new LoopMagico().contar());
+    }
+}
+
+class LoopMagico {
+    public int contar() {
+        int contador;
+        contador = 0;
+
+        // Erro proposital: faltou a letra 'e'
+        whil (contador < 5) {
+            contador = contador + 1;
+        }
+
+        return contador;
+    }
+}

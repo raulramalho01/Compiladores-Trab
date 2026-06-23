@@ -1,0 +1,59 @@
+// Código sem erros.
+// -ast -ts -tokens
+class JogoAventura {
+    public static void main(String[] args) {
+        System.out.println(new Batalha().iniciar());
+    }
+}
+
+class Entidade {
+    int hp;
+
+    public int setHp(int v) { 
+        hp = v; 
+        return hp; 
+    }
+
+    public int getHp() { 
+        return hp; 
+    }
+}
+
+class Heroi extends Entidade {
+    boolean vivo;
+
+    public boolean defender(int dano) {
+        hp = hp - dano;
+        if (hp < 1) { 
+            vivo = false; 
+        } else { 
+            vivo = true; 
+        }
+        return vivo;
+    }
+}
+
+class Batalha {
+    public int iniciar() {
+        Heroi h;
+        int[] ataques;
+        int i;
+        boolean status;
+
+        h = new Heroi();
+        i = h.setHp(100);
+        
+        ataques = new int[3];
+        ataques[0] = 30;
+        ataques[1] = 50;
+        ataques[2] = 25;
+
+        i = 0;
+        while (i < ataques.length) {
+            status = h.defender(ataques[i]);
+            i = i + 1;
+        }
+        
+        return h.getHp();
+    }
+}
