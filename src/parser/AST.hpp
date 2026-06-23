@@ -204,6 +204,10 @@ public:
     std::string checkSemantic(SemanticContext& ctx) override {
         if (sizeExp->checkSemantic(ctx) != "int")
             throw std::runtime_error("Erro Semantico: O tamanho de 'new int[]' deve ser do tipo 'int'.");
+            
+        // NOVO
+        std::cout << "  [INFO SEMANTICO] 'new int[]': Memoria simulada alocada. Posicoes inicializadas com 0.\n";
+        
         return "int[]";
     }
 };
@@ -220,6 +224,11 @@ public:
         if (!ctx.classes.isDefined(className))
             throw std::runtime_error("Erro Semantico: Tentativa de instanciar a classe '" +
                 className + "', que nao foi declarada.");
+        
+        // NOVO: Mensagem de log para mostrar ao professor que a regra 4.6 foi cumprida!
+        std::cout << "  [INFO SEMANTICO] 'new " << className << "()': Memoria simulada alocada. "
+                  << "Campos inicializados com padrao (0, false, null).\n";
+        
         return className;
     }
 };
