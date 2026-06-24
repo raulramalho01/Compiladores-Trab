@@ -38,7 +38,7 @@ SymbolInfo* SymbolTable::resolve(const std::string& name) {
 void SymbolTable::exitScope() {
     if (scopes.size() > 1) { // Nunca removemos o escopo Global
         
-        // NOVO: "Tira uma foto" do escopo antes de destruí-lo
+        // "Tira uma foto" do escopo antes de destruí-lo
         std::ostringstream oss;
         int topo = scopes.size() - 1;
         oss << ">> Escopo: " << scopeNames[topo] << " <<\n";
@@ -81,7 +81,7 @@ std::string SymbolTable::toString() const {
         oss << "\n";
     }
     
-    // NOVO: Adiciona todas as "fotos" dos escopos que foram fechados durante o parse
+    // Adiciona todas as "fotos" dos escopos que foram fechados durante o parse
     oss << tableHistory;
     
     oss << "==========================\n";

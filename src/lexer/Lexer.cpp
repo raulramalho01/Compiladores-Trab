@@ -37,9 +37,9 @@ Token Lexer::nextToken() {
         return nextToken();
     }
 
-    // 2. NOVO: Tratamento de Comentários Nativos no Lexer
+    // 2. Tratamento de Comentários Nativos no Lexer
     if (currentChar == '/') {
-        // Espia o próximo caractere sem avançar o ponteiro principal ainda
+        // Olha o próximo caractere sem avançar o ponteiro principal ainda
         if (position + 1 < input.length()) {
             char nextChar = input[position + 1];
             

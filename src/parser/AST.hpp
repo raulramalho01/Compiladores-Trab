@@ -65,11 +65,10 @@ public:
         std::cout << "IdExp: " << name << "\n";
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        // 1) Procura como variável local / parâmetro / campo (campos herdados já
-        //    foram empilhados no escopo da classe -> herança de atributos).
+
         std::string t = ctx.lookup(name);
         if (t.empty()) {
-            // 2) Tenta como campo herdado diretamente pela hierarquia de classes
+            // Tenta como campo herdado diretamente pela hierarquia de classes
             t = ctx.classes.resolveFieldType(ctx.currentClass, name);
         }
         if (t.empty()) {
@@ -205,7 +204,6 @@ public:
         if (sizeExp->checkSemantic(ctx) != "int")
             throw std::runtime_error("Erro Semantico: O tamanho de 'new int[]' deve ser do tipo 'int'.");
             
-        // NOVO
         std::cout << "  [INFO SEMANTICO] 'new int[]': Memoria simulada alocada. Posicoes inicializadas com 0.\n";
         
         return "int[]";
@@ -225,7 +223,7 @@ public:
             throw std::runtime_error("Erro Semantico: Tentativa de instanciar a classe '" +
                 className + "', que nao foi declarada.");
         
-        // NOVO: Mensagem de log para mostrar ao professor que a regra 4.6 foi cumprida!
+        // NOVO: Mensagem de log para mostrar que a regra 4.6 foi cumprida!
         std::cout << "  [INFO SEMANTICO] 'new " << className << "()': Memoria simulada alocada. "
                   << "Campos inicializados com padrao (0, false, null).\n";
         
@@ -397,7 +395,7 @@ public:
         std::set<std::string> afterElse = ctx.assignedVars;
 
         if (elseBlock.empty())
-            ctx.assignedVars = before; // sem else, nada é garantido
+            ctx.assignedVars = before;
         else
             ctx.assignedVars = intersectAssigned(afterThen, afterElse);
         return "void";
@@ -420,7 +418,6 @@ public:
     std::string checkSemantic(SemanticContext& ctx) override {
         if (condition && condition->checkSemantic(ctx) != "boolean")
             throw std::runtime_error("Erro Semantico: A condicao do 'while' deve ser do tipo 'boolean'.");
-        // O corpo pode não executar; nada que ele atribua é garantido depois.
         std::set<std::string> before = ctx.assignedVars;
         for (auto& cmd : block) if (cmd) cmd->checkSemantic(ctx);
         ctx.assignedVars = before;
@@ -625,7 +622,7 @@ public:
                 ci->methods[m->getName()] = sig;
             }
         }
-        ct.verify(); // pais existem, sem ciclos, overrides compatíveis
+        ct.verify();
     }
 
     std::string checkSemantic(SemanticContext& ctx) override {

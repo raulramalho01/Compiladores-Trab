@@ -18,7 +18,7 @@ private:
     // Auxiliar apenas para o toString() imprimir nomes bonitos (ex: "Escopo: Classe Mago")
     std::vector<std::string> scopeNames; 
 
-    // NOVO: Guarda o texto dos escopos que já foram fechados e removidos da pilha
+    // Guarda o texto dos escopos que já foram fechados e removidos da pilha
     std::string tableHistory = "";
 
 public:
