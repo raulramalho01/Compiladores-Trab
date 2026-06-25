@@ -1,0 +1,85 @@
+class MainVetor {
+    public static void main ( String [ ] args ) {
+        System.out.println ( new Sistema ( ) . executar ( ) ) ;
+    }
+}
+
+class Sistema {
+    VetorContainer v ;
+    Buscador buscador ;
+    int aux ;
+    int resultado ;
+
+    public int executar ( ) {
+        v = new VetorContainer ( ) ;
+        buscador = new Buscador ( ) ;
+
+        aux = v . inicializar ( ) ;
+        aux = v . preencher ( 0 , 1 ) ;
+        aux = v . preencher ( 1 , 2 ) ;
+        aux = v . preencher ( 2 , 3 ) ;
+        aux = v . preencher ( 3 , 4 ) ;
+
+        resultado = buscador . existeElemento ( v , 30 ) ;
+        aux = buscador . copiarMetade ( v ) ;
+
+        return resultado ;
+    }
+}
+
+class VetorContainer {
+    int [ ] dados ;
+
+    public int inicializar ( ) {
+        dados = new int [ 4 ] ;
+        return 0 ;
+    }
+
+    public int preencher ( int indice , int valor ) {
+        dados [ indice ] = valor ;
+        return 0 ;
+    }
+
+    public int acessar ( int indice ) {
+        return dados [ indice ] ;
+    }
+
+    public int obterTamanho ( ) {
+        return dados . length ;
+    }
+}
+
+class Buscador {
+    int encontrado ;
+    int i ;
+    int tamanho ;
+    int [ ] vetorCopia ;
+
+    public int existeElemento ( VetorContainer vc , int elemento ) {
+        encontrado = 0 ;
+        i = 0 ;
+        tamanho = vc . obterTamanho ( ) ;
+
+        while ( i < tamanho ) {
+            if ( ( ! ( vc . acessar ( i ) < elemento ) ) && ( ! ( elemento < vc . acessar ( i ) ) ) ) {
+                encontrado = 1 ;
+            } else {
+                encontrado = encontrado ;
+            }
+            i = i + 1 ;
+        }
+        return encontrado ;
+    }
+
+    public int copiarMetade ( VetorContainer vc ) {
+        tamanho = vc . obterTamanho ( ) ;
+        vetorCopia = new int [ 4 ] ;
+        i = 0 ;
+
+        while ( ( i * 2 ) < tamanho ) {
+            vetorCopia [ i ] = vc . acessar ( i ) ;
+            i = i + 1 ;
+        }
+        return i ;
+    }
+}

@@ -1,0 +1,41 @@
+class MainSoma {
+    public static void main ( String [ ] args ) {
+        
+            System.out.println ( new Computador ( ) . executar ( ) ) ;
+        
+    }
+}
+
+class Computador {
+    int [ ] vetor ;
+    int soma ;
+    int i ;
+
+    public int executar ( ) {
+        vetor = new int [ 10 ] ;
+        
+        // Inicializando o vetor com alguns valores de teste
+        vetor [ 0 ] = 5 ;
+        vetor [ 1 ] = 10 ;
+        vetor [ 2 ] = 15 ;
+        vetor [ 3 ] = 20 ;
+        vetor [ 4 ] = 25 ;
+        vetor [ 5 ] = 30 ;
+        vetor [ 6 ] = 35 ;
+        vetor [ 7 ] = 40 ;
+        vetor [ 8 ] = 45 ;
+        vetor [ 9 ] = 50 ;
+
+        soma = 0 ;
+        i = 0 ;
+
+        // Laço para somar os elementos
+        while ( i < vetor . length ) {
+            
+                soma = soma + vetor [ i ] ;
+                i = i + 1 ;
+            
+        }
+        return soma ;
+    }
+}
