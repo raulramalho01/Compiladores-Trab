@@ -23,6 +23,19 @@ bool SymbolTable::add(const std::string& name, const std::string& type, const st
     return true;
 }
 
+std::string SymbolTable::newTemp() {
+    std::string name = "t" + std::to_string(++tempCount);
+    // registra a temporaria na base da pilha (escopo global de simbolos gerados)
+    scopes.front()[name] = {"temp", "Temporaria"};
+    return name;
+}
+
+std::string SymbolTable::newLabel() {
+    std::string name = "L" + std::to_string(++labelCount);
+    scopes.front()[name] = {"label", "Label"};
+    return name;
+}
+
 SymbolInfo* SymbolTable::resolve(const std::string& name) {
     // Procura de trás pra frente (rbegin até rend)
     // Isso garante que ele ache Parâmetros > Atributos > Globais
