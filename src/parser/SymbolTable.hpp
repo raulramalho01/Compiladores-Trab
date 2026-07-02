@@ -21,6 +21,10 @@ private:
     // Guarda o texto dos escopos que já foram fechados e removidos da pilha
     std::string tableHistory = "";
 
+    // Contadores para geracao de temporarias e labels
+    int tempCount = 0;
+    int labelCount = 0;
+
 public:
     SymbolTable();
 
@@ -32,6 +36,12 @@ public:
 
     // Adiciona um símbolo APENAS no escopo atual (topo da pilha)
     bool add(const std::string& name, const std::string& type, const std::string& scopeLevel);
+
+    // === Geracao de codigo intermediario (3AC) ===
+    // Cria e REGISTRA uma nova variavel temporaria (t1, t2, ...) na tabela hash
+    std::string newTemp();
+    // Cria e REGISTRA uma nova label (L1, L2, ...) na tabela hash
+    std::string newLabel();
 
     // Procura um símbolo de dentro para fora (Top-Down na pilha)
     SymbolInfo* resolve(const std::string& name);
