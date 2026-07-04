@@ -26,6 +26,9 @@ g++ -std=c++17 src/lexer/Lexer.cpp src/parser/SymbolTable.cpp src/parser/Parser.
 
 ## Tabela de flags
 
+### -3ac : 3ac só é impresso depois que o programa passa nas análises léxica, sintática e semântica
+./src/bin/compilador teste_04_correto.ling -3ac
+
 ### sem flag: só compila e diz se passou (sintático + semântico)
 ./src/bin/compilador teste_correto.ling
 
