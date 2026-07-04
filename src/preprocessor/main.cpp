@@ -2,6 +2,7 @@
 #include "../parser/Parser.hpp"
 #include "../parser/AST.hpp"
 #include "../parser/SemanticContext.hpp"
+#include "../codegen/tac.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -25,6 +26,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  -ts           Imprime a tabela de simbolos\n";
         std::cout << "  -lex-strict   Para no PRIMEIRO erro lexico (em vez de listar todos)\n";
         std::cout << "  -suggest      Mostra a linha do erro e sugestoes de correcao\n";
+        std::cout << "  -3ac          Gera e imprime o codigo intermediario (3 enderecos)\n";
         return 1;
     }
 
@@ -93,15 +95,33 @@ int main(int argc, char* argv[]) {
         }
 
         if (astRoot) {
-            // 3. ANALISE SEMANTICA EM DUAS PASSADAS
+            // 3. ANALISE SEMANTICA EM DUAS PASSADAS (coleta TODOS os erros)
             ClassTable classTable;
-            astRoot->buildClassTable(classTable);   // 1a passada: grafo de classes/herança
-
             SemanticContext ctx(classTable);
-            astRoot->checkSemantic(ctx);             // 2a passada: tipos, dispatch, init
+            astRoot->buildClassTable(classTable, ctx.errors); // 1a passada: grafo + erros de classe
+            astRoot->checkSemantic(ctx);                      // 2a passada: tipos, dispatch, init
 
-            std::cout << "\n[SUCESSO] Analise Semantica concluida sem erros de tipos, "
-                         "declaracoes, heranca ou inicializacao!\n";
+            if (ctx.errors.empty()) {
+                std::cout << "\n[SUCESSO] Analise Semantica concluida sem erros de tipos, "
+                             "declaracoes, heranca ou inicializacao\n";
+
+                // 4. GERACAO DE CODIGO INTERMEDIARIO (3AC)
+                if (tem_flag(args, "-3ac") || tem_flag(args, "-ir")) {
+                    SymbolTable tabelaGeracao;      // tabela (hash) para temporarias e labels
+                    CodeGen cg(tabelaGeracao);
+                    Code codigo = astRoot->gen(cg); // percorre a AST gerando 3AC
+                    std::cout << "\n=== CODIGO INTERMEDIARIO (3 ENDERECOS) ===\n";
+                    std::cout << codigo.toString();
+                    std::cout << "==========================================\n";
+                }
+            } else {
+                std::cerr << "\n[ERROS SEMANTICOS] Foram encontrados "
+                          << ctx.errors.size() << " erro(s):\n";
+                int i = 1;
+                for (const auto& e : ctx.errors)
+                    std::cerr << "  " << i++ << ") " << e << "\n";
+                std::cerr << "Falha na compilacao.\n";
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << "\n" << e.what() << "\n";
