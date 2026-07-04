@@ -4,7 +4,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
-#include <stdexcept>
+
+// Tipo-sentinela: indica "tipo desconhecido/com erro".
+// Serve para SUPRIMIR erros em cascata (um erro nao gera dez outros).
+static const std::string TIPO_ERRO = "$err";
 
 // ==========================================================
 // Informações coletadas na 1a passada (tabela de classes)
@@ -20,7 +23,7 @@ struct ClassInfo {
     std::string name;
     std::string parent; // "" se não houver herança
     std::unordered_map<std::string, std::string> fields;     // nome -> tipo
-    std::unordered_map<std::string, MethodSig> methods;       // nome -> assinatura
+    std::unordered_map<std::string, MethodSig> methods;      // nome -> assinatura
 };
 
 // ==========================================================
@@ -75,9 +78,10 @@ public:
     }
 
     // 'sub' é subtipo de 'super'? (igualdade ou cadeia de herança)
+
     bool isSubtype(const std::string& sub, const std::string& super) {
         if (sub == super) return true;
-        if (!classes.count(sub) || !classes.count(super)) return false; // primitivos só batem por igualdade
+        if (!classes.count(sub) || !classes.count(super)) return false; // primitivos só batem
         std::string cur = sub;
         std::unordered_set<std::string> visited;
         while (!cur.empty() && classes.count(cur) && !visited.count(cur)) {
@@ -88,33 +92,39 @@ public:
         return false;
     }
 
-    // 'source' pode ser atribuído a um destino do tipo 'target'?
+        // 'source' pode ser atribuído a um destino do tipo 'target'?
+
     bool assignableTo(const std::string& target, const std::string& source) {
+        if (target == TIPO_ERRO || source == TIPO_ERRO) return true; // suprime cascata
         if (target == source) return true;
-        return isSubtype(source, target); // permite subclasse onde superclasse é esperada
+        return isSubtype(source, target);
     }
 
-    // Verifica integridade da hierarquia: pais existem, sem ciclos, overrides compatíveis
-    void verify() {
+    // Verifica a hierarquia e ACUMULA os erros encontrados em 'out'
+    void verify(std::vector<std::string>& out) {
         for (auto& kv : classes) {
             ClassInfo& ci = kv.second;
 
             // 1. Pai precisa existir
             if (!ci.parent.empty() && !classes.count(ci.parent)) {
-                throw std::runtime_error("Erro Semantico: A classe '" + ci.name +
+                out.push_back("Erro Semantico: A classe '" + ci.name +
                     "' tenta herdar de '" + ci.parent + "', que nao foi declarada.");
+                continue; // sem pai valido, nao da para checar ciclo/override deste
             }
 
-            // 2. Sem ciclos de herança
+            // 2. Sem ciclos de heranca
             {
                 std::unordered_set<std::string> visited;
                 std::string cur = ci.name;
+                bool ciclo = false;
                 while (!cur.empty() && classes.count(cur)) {
-                    if (visited.count(cur)) {
-                        throw std::runtime_error("Erro Semantico: Ciclo de heranca detectado envolvendo a classe '" + ci.name + "'.");
-                    }
+                    if (visited.count(cur)) { ciclo = true; break; }
                     visited.insert(cur);
                     cur = classes[cur].parent;
+                }
+                if (ciclo) {
+                    out.push_back("Erro Semantico: Ciclo de heranca detectado envolvendo a classe '" + ci.name + "'.");
+                    continue;
                 }
             }
 
@@ -128,11 +138,9 @@ public:
                 for (auto& m : ci.methods) {
                     auto it = anc.methods.find(m.first);
                     if (it != anc.methods.end()) {
-                        const MethodSig& filho = m.second;
-                        const MethodSig& mae = it->second;
-                        if (filho.returnType != mae.returnType ||
-                            filho.paramTypes != mae.paramTypes) {
-                            throw std::runtime_error("Erro Semantico: O metodo '" + m.first +
+                        if (m.second.returnType != it->second.returnType ||
+                            m.second.paramTypes != it->second.paramTypes) {
+                            out.push_back("Erro Semantico: O metodo '" + m.first +
                                 "' em '" + ci.name + "' sobrescreve '" + cur +
                                 "' com assinatura incompativel (override invalido).");
                         }
@@ -150,17 +158,21 @@ public:
 class SemanticContext {
 public:
     ClassTable& classes;
-    std::string currentClass;      // classe sendo analisada (para 'this' e campos)
-    std::string currentReturnType; // tipo de retorno do método atual
+    std::string currentClass;
+    std::string currentReturnType;
 
-    // Pilha de escopos de variáveis (nome -> tipo)
+        // Pilha de escopos de variáveis (nome -> tipo)
+
     std::vector<std::unordered_map<std::string, std::string>> envStack;
+    std::set<std::string> declaredLocals;
+    std::set<std::string> assignedVars;
 
-    // Controle de inicialização definida (definite assignment) para variáveis locais
-    std::set<std::string> declaredLocals; // locais do método atual que exigem atribuição
-    std::set<std::string> assignedVars;   // o que já foi definitivamente atribuído
+    // Lista de TODOS os erros semanticos encontrados (modo "coletar tudo")
+    std::vector<std::string> errors;
 
     SemanticContext(ClassTable& ct) : classes(ct) {}
+
+    void error(const std::string& msg) { errors.push_back("Erro Semantico: " + msg); }
 
     void pushScope() { envStack.push_back({}); }
     void popScope()  { if (!envStack.empty()) envStack.pop_back(); }
@@ -169,7 +181,8 @@ public:
         if (!envStack.empty()) envStack.back()[name] = type;
     }
 
-    // Resolve uma variável de dentro para fora
+        // Resolve uma variável de dentro para fora
+
     std::string lookup(const std::string& name) {
         for (auto it = envStack.rbegin(); it != envStack.rend(); ++it) {
             auto f = it->find(name);
@@ -183,7 +196,6 @@ public:
     void markAssigned(const std::string& name) { assignedVars.insert(name); }
 };
 
-// Interseção de dois conjuntos de variáveis atribuídas (merge de fluxo)
 inline std::set<std::string> intersectAssigned(const std::set<std::string>& a,
                                                const std::set<std::string>& b) {
     std::set<std::string> r;
