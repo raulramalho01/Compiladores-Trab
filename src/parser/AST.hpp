@@ -3,10 +3,10 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include <stdexcept>
+#include <algorithm>
 #include "SemanticContext.hpp"
+#include "../codegen/tac.hpp"
 
-// Declaração simples de variável/campo/parâmetro (tipo + nome)
 struct VarDecl {
     std::string type;
     std::string name;
@@ -20,7 +20,6 @@ public:
     virtual ~ASTNode() = default;
     virtual void print(int nivel) const = 0;
     virtual std::string checkSemantic(SemanticContext& ctx) = 0;
-
 protected:
     void imprimirIndentacao(int nivel) const {
         for (int i = 0; i < nivel; ++i) std::cout << "  |";
@@ -29,19 +28,29 @@ protected:
 };
 
 // ==========================================================
-// 2. EXPRESSÕES (Exp)
+// 2. EXPRESSOES
+//   genExp: gera o 3AC da expressao e devolve, em 'place', o
+//   simbolo/temporaria que guarda o resultado.
 // ==========================================================
-class ExpNode : public ASTNode {};
+class ExpNode : public ASTNode {
+public:
+    virtual Code genExp(CodeGen& cg, std::string& place) = 0;
+};
 
 class IntLiteralNode : public ExpNode {
     int value;
 public:
     IntLiteralNode(int val) : value(val) {}
-    void print(int nivel) const override {
+    void print(int nivel) const override { 
         imprimirIndentacao(nivel);
-        std::cout << "IntLiteral: " << value << "\n";
-    }
+         std::cout << "IntLiteral: " << value << "\n"; 
+        }
     std::string checkSemantic(SemanticContext&) override { return "int"; }
+    Code genExp(CodeGen&, std::string& place) override 
+    { 
+        place = std::to_string(value);
+         return Code(); 
+        }
 };
 
 class BoolLiteralNode : public ExpNode {
@@ -49,10 +58,18 @@ class BoolLiteralNode : public ExpNode {
 public:
     BoolLiteralNode(bool val) : value(val) {}
     void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "BoolLiteral: " << (value ? "true" : "false") << "\n";
+         imprimirIndentacao(nivel);
+          std::cout << "BoolLiteral: " <<
+           (value ? "true" : "false") << "\n"; 
+        }
+    std::string checkSemantic(SemanticContext&) override 
+    { 
+        return "boolean";
+     }
+    Code genExp(CodeGen&, std::string& place) override { 
+        place = value ? "1" : "0";
+        return Code(); 
     }
-    std::string checkSemantic(SemanticContext&) override { return "boolean"; }
 };
 
 class IdExpNode : public ExpNode {
@@ -61,72 +78,83 @@ public:
     IdExpNode(std::string n) : name(std::move(n)) {}
     const std::string& getName() const { return name; }
     void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "IdExp: " << name << "\n";
-    }
+         imprimirIndentacao(nivel);
+          std::cout << "IdExp: " << name << "\n";
+         }
     std::string checkSemantic(SemanticContext& ctx) override {
-
+        
+        // Tenta como campo herdado diretamente pela hierarquia de classes
         std::string t = ctx.lookup(name);
-        if (t.empty()) {
-            // Tenta como campo herdado diretamente pela hierarquia de classes
-            t = ctx.classes.resolveFieldType(ctx.currentClass, name);
+        if (t.empty()) t = ctx.classes.resolveFieldType(ctx.currentClass, name);
+        if (t.empty()) { 
+            ctx.error("Variavel '" + name + "' nao declarada."); 
+            return TIPO_ERRO; 
         }
-        if (t.empty()) {
-            throw std::runtime_error("Erro Semantico: Variavel '" + name + "' nao declarada.");
-        }
+        
         // Garantia de inicialização: se for uma variável local, precisa ter sido atribuída
-        if (ctx.isLocal(name) && !ctx.isAssigned(name)) {
-            throw std::runtime_error("Erro Semantico: A variavel local '" + name +
-                "' pode ser usada antes de ser inicializada.");
-        }
+        if (ctx.isLocal(name) && !ctx.isAssigned(name))
+            ctx.error("Erro Semântico: A variavel local '" + name + "' pode ser usada antes de ser inicializada.");
         return t;
     }
+    Code genExp(CodeGen&, std::string& place) override { place = name; return Code(); }
 };
 
 class ThisNode : public ExpNode {
 public:
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "ThisExp\n";
+    void print(int nivel) const override { 
+        imprimirIndentacao(nivel); 
+        std::cout << "ThisExp\n"; 
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (ctx.currentClass.empty()) {
-            throw std::runtime_error("Erro Semantico: 'this' usado fora de uma classe.");
+        if (ctx.currentClass.empty()) { 
+            ctx.error("Erro Semântico:'this' usado fora de uma classe."); 
+            return TIPO_ERRO; 
         }
         return ctx.currentClass;
     }
+    Code genExp(CodeGen&, std::string& place) override { place = "this"; return Code(); }
 };
 
 class BinOpNode : public ExpNode {
     std::string op;
-    std::unique_ptr<ExpNode> left;
-    std::unique_ptr<ExpNode> right;
+    std::unique_ptr<ExpNode> left, right;
 public:
-    BinOpNode(std::string oper, std::unique_ptr<ExpNode> l, std::unique_ptr<ExpNode> r)
-        : op(std::move(oper)), left(std::move(l)), right(std::move(r)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "BinOp [" << op << "]\n";
-        if (left) left->print(nivel + 1);
-        if (right) right->print(nivel + 1);
+    BinOpNode(std::string o, std::unique_ptr<ExpNode> l, std::unique_ptr<ExpNode> r)
+        : op(std::move(o)), left(std::move(l)), right(std::move(r)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "BinOp [" << op << "]\n";
+        if (left) left->print(n + 1);
+        if (right) right->print(n + 1);
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        std::string tLeft = left->checkSemantic(ctx);
-        std::string tRight = right->checkSemantic(ctx);
+        std::string tL = left->checkSemantic(ctx);
+        std::string tR = right->checkSemantic(ctx);
+        bool err = (tL == TIPO_ERRO || tR == TIPO_ERRO);
         if (op == "+" || op == "-" || op == "*") {
-            if (tLeft != "int" || tRight != "int")
-                throw std::runtime_error("Erro Semantico: Operador '" + op + "' exige operandos do tipo 'int'.");
+            if (!err && (tL != "int" || tR != "int")) ctx.error("Operador '" + op + "' exige operandos do tipo 'int'.");
             return "int";
         } else if (op == "<") {
-            if (tLeft != "int" || tRight != "int")
-                throw std::runtime_error("Erro Semantico: Operador '<' exige operandos do tipo 'int'.");
+            if (!err && (tL != "int" || tR != "int")) ctx.error("Operador '<' exige operandos do tipo 'int'.");
             return "boolean";
         } else if (op == "&&") {
-            if (tLeft != "boolean" || tRight != "boolean")
-                throw std::runtime_error("Erro Semantico: Operador '&&' exige operandos do tipo 'boolean'.");
+            if (!err && (tL != "boolean" || tR != "boolean")) ctx.error("Operador '&&' exige operandos do tipo 'boolean'.");
             return "boolean";
         }
-        return "void";
+        return TIPO_ERRO;
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        std::string p1, p2;
+        Code c = left->genExp(cg, p1);
+        c.concat(right->genExp(cg, p2));
+        place = cg.newTemp();
+        TacOp o = TacOp::ADD;
+        if (op == "+") o = TacOp::ADD;
+        else if (op == "-") o = TacOp::SUB;
+        else if (op == "*") o = TacOp::MULT;
+        else if (op == "<") o = TacOp::LESS;
+        else if (op == "&&") o = TacOp::AND;
+        c.add(makeInstr(o, place, p1, p2));
+        return c;
     }
 };
 
@@ -134,79 +162,87 @@ class UnaryOpNode : public ExpNode {
     std::string op;
     std::unique_ptr<ExpNode> exp;
 public:
-    UnaryOpNode(std::string oper, std::unique_ptr<ExpNode> expression)
-        : op(std::move(oper)), exp(std::move(expression)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "UnaryOp [" << op << "]\n";
-        if (exp) exp->print(nivel + 1);
-    }
+    UnaryOpNode(std::string o, std::unique_ptr<ExpNode> e) : op(std::move(o)), exp(std::move(e)) {}
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "UnaryOp [" << op << "]\n"; if (exp) exp->print(n + 1); }
     std::string checkSemantic(SemanticContext& ctx) override {
         std::string t = exp->checkSemantic(ctx);
         if (op == "!") {
-            if (t != "boolean")
-                throw std::runtime_error("Erro Semantico: Operador '!' exige operando do tipo 'boolean'.");
+            if (t != TIPO_ERRO && t != "boolean") ctx.error("Operador '!' exige operando do tipo 'boolean'.");
             return "boolean";
         }
         return t;
     }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        std::string p;
+        Code c = exp->genExp(cg, p);
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::NOT, place, p));
+        return c;
+    }
 };
 
 class ArrayAccessNode : public ExpNode {
-    std::unique_ptr<ExpNode> arrayExp;
-    std::unique_ptr<ExpNode> indexExp;
+    std::unique_ptr<ExpNode> arrayExp, indexExp;
 public:
-    ArrayAccessNode(std::unique_ptr<ExpNode> arr, std::unique_ptr<ExpNode> idx)
-        : arrayExp(std::move(arr)), indexExp(std::move(idx)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "ArrayAccess\n";
-        if (arrayExp) arrayExp->print(nivel + 1);
-        if (indexExp) indexExp->print(nivel + 1);
+    ArrayAccessNode(std::unique_ptr<ExpNode> a, std::unique_ptr<ExpNode> i)
+        : arrayExp(std::move(a)), indexExp(std::move(i)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "ArrayAccess\n";
+        if (arrayExp) arrayExp->print(n + 1);
+        if (indexExp) indexExp->print(n + 1);
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        std::string tArr = arrayExp->checkSemantic(ctx);
-        std::string tIdx = indexExp->checkSemantic(ctx);
-        if (tArr != "int[]")
-            throw std::runtime_error("Erro Semantico: Acesso indexado exige um vetor 'int[]'.");
-        if (tIdx != "int")
-            throw std::runtime_error("Erro Semantico: O indice de um vetor deve ser do tipo 'int'.");
+        std::string tA = arrayExp->checkSemantic(ctx);
+        std::string tI = indexExp->checkSemantic(ctx);
+        if (tA != TIPO_ERRO && tA != "int[]") ctx.error("Acesso indexado exige um vetor 'int[]'.");
+        if (tI != TIPO_ERRO && tI != "int") ctx.error("O indice de um vetor deve ser do tipo 'int'.");
         return "int";
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        std::string pa, pi;
+        Code c = arrayExp->genExp(cg, pa);
+        c.concat(indexExp->genExp(cg, pi));
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::ARRAY_LOAD, place, pa, pi));
+        return c;
     }
 };
 
 class LengthNode : public ExpNode {
     std::unique_ptr<ExpNode> arrayExp;
 public:
-    LengthNode(std::unique_ptr<ExpNode> arr) : arrayExp(std::move(arr)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "Length\n";
-        if (arrayExp) arrayExp->print(nivel + 1);
-    }
+    LengthNode(std::unique_ptr<ExpNode> a) : arrayExp(std::move(a)) {}
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "Length\n"; if (arrayExp) arrayExp->print(n + 1); }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (arrayExp->checkSemantic(ctx) != "int[]")
-            throw std::runtime_error("Erro Semantico: '.length' so pode ser aplicado a um vetor 'int[]'.");
+        std::string t = arrayExp->checkSemantic(ctx);
+        if (t != TIPO_ERRO && t != "int[]") ctx.error("'.length' so pode ser aplicado a um vetor 'int[]'.");
         return "int";
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        std::string pa;
+        Code c = arrayExp->genExp(cg, pa);
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::LENGTH, place, pa));
+        return c;
     }
 };
 
 class NewArrayNode : public ExpNode {
     std::unique_ptr<ExpNode> sizeExp;
 public:
-    NewArrayNode(std::unique_ptr<ExpNode> sz) : sizeExp(std::move(sz)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "NewArray (int[])\n";
-        if (sizeExp) sizeExp->print(nivel + 1);
-    }
+    NewArrayNode(std::unique_ptr<ExpNode> s) : sizeExp(std::move(s)) {}
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "NewArray (int[])\n"; if (sizeExp) sizeExp->print(n + 1); }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (sizeExp->checkSemantic(ctx) != "int")
-            throw std::runtime_error("Erro Semantico: O tamanho de 'new int[]' deve ser do tipo 'int'.");
-            
-        std::cout << "  [INFO SEMANTICO] 'new int[]': Memoria simulada alocada. Posicoes inicializadas com 0.\n";
-        
+        std::string t = sizeExp->checkSemantic(ctx);
+        if (t != TIPO_ERRO && t != "int") ctx.error("O tamanho de 'new int[]' deve ser do tipo 'int'.");
         return "int[]";
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        std::string ps;
+        Code c = sizeExp->genExp(cg, ps);
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::NEW_ARRAY, place, ps));
+        return c;
     }
 };
 
@@ -214,20 +250,19 @@ class NewObjectNode : public ExpNode {
     std::string className;
 public:
     NewObjectNode(std::string n) : className(std::move(n)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "NewObject [" << className << "]\n";
-    }
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "NewObject [" << className << "]\n"; }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (!ctx.classes.isDefined(className))
-            throw std::runtime_error("Erro Semantico: Tentativa de instanciar a classe '" +
-                className + "', que nao foi declarada.");
-        
-        // NOVO: Mensagem de log para mostrar que a regra 4.6 foi cumprida!
-        std::cout << "  [INFO SEMANTICO] 'new " << className << "()': Memoria simulada alocada. "
-                  << "Campos inicializados com padrao (0, false, null).\n";
-        
+        if (!ctx.classes.isDefined(className)) {
+            ctx.error("Tentativa de instanciar a classe '" + className + "', que nao foi declarada.");
+            return TIPO_ERRO;
+        }
         return className;
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        Code c;
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::NEW_OBJECT, place, className));
+        return c;
     }
 };
 
@@ -236,169 +271,185 @@ class MethodCallNode : public ExpNode {
     std::string method;
     std::vector<std::unique_ptr<ExpNode>> args;
 public:
-    MethodCallNode(std::unique_ptr<ExpNode> recv, std::string m,
-                   std::vector<std::unique_ptr<ExpNode>> a)
-        : receiver(std::move(recv)), method(std::move(m)), args(std::move(a)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "MethodCall [" << method << "]\n";
-        imprimirIndentacao(nivel + 1); std::cout << "Receiver:\n";
-        if (receiver) receiver->print(nivel + 2);
+    MethodCallNode(std::unique_ptr<ExpNode> r, std::string m, std::vector<std::unique_ptr<ExpNode>> a)
+        : receiver(std::move(r)), method(std::move(m)), args(std::move(a)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "MethodCall [" << method << "]\n";
+        imprimirIndentacao(n + 1); std::cout << "Receiver:\n";
+        if (receiver) receiver->print(n + 2);
         if (!args.empty()) {
-            imprimirIndentacao(nivel + 1); std::cout << "Args:\n";
-            for (const auto& a : args) if (a) a->print(nivel + 2);
+            imprimirIndentacao(n + 1); std::cout << "Args:\n";
+            for (const auto& a : args) if (a) a->print(n + 2);
         }
     }
     std::string checkSemantic(SemanticContext& ctx) override {
         std::string recvType = receiver->checkSemantic(ctx);
+        std::vector<std::string> argTypes;
+        for (auto& a : args) argTypes.push_back(a->checkSemantic(ctx));
+        if (recvType == TIPO_ERRO) return TIPO_ERRO;
         if (!ctx.classes.isDefined(recvType)) {
-            throw std::runtime_error("Erro Semantico: Chamada do metodo '" + method +
-                "' sobre algo que nao e um objeto (tipo '" + recvType + "').");
+            ctx.error("Chamada do metodo '" + method + "' sobre algo que nao e um objeto (tipo '" + recvType + "').");
+            return TIPO_ERRO;
         }
-        // Despacho: resolve o método subindo na hierarquia a partir do tipo do receptor
         const MethodSig* sig = ctx.classes.resolveMethod(recvType, method);
         if (!sig) {
-            throw std::runtime_error("Erro Semantico: O metodo '" + method +
-                "' nao existe na classe '" + recvType + "' nem em suas superclasses.");
+            ctx.error("O metodo '" + method + "' nao existe na classe '" + recvType + "' nem em suas superclasses.");
+            return TIPO_ERRO;
         }
-        if (args.size() != sig->paramTypes.size()) {
-            throw std::runtime_error("Erro Semantico: O metodo '" + method + "' espera " +
-                std::to_string(sig->paramTypes.size()) + " argumento(s), mas recebeu " +
-                std::to_string(args.size()) + ".");
-        }
-        for (size_t i = 0; i < args.size(); ++i) {
-            std::string at = args[i]->checkSemantic(ctx);
-            if (!ctx.classes.assignableTo(sig->paramTypes[i], at)) {
-                throw std::runtime_error("Erro Semantico: Argumento " + std::to_string(i + 1) +
-                    " do metodo '" + method + "' esperava '" + sig->paramTypes[i] +
-                    "', mas recebeu '" + at + "'.");
-            }
-        }
+        if (argTypes.size() != sig->paramTypes.size())
+            ctx.error("O metodo '" + method + "' espera " + std::to_string(sig->paramTypes.size()) +
+                      " argumento(s), mas recebeu " + std::to_string(argTypes.size()) + ".");
+        size_t lim = std::min(argTypes.size(), sig->paramTypes.size());
+        for (size_t i = 0; i < lim; ++i)
+            if (!ctx.classes.assignableTo(sig->paramTypes[i], argTypes[i]))
+                ctx.error("Argumento " + std::to_string(i + 1) + " do metodo '" + method +
+                          "' esperava '" + sig->paramTypes[i] + "', mas recebeu '" + argTypes[i] + "'.");
         return sig->returnType;
+    }
+    Code genExp(CodeGen& cg, std::string& place) override {
+        // 1) gera codigo do receptor e dos argumentos (filhos primeiro)
+        std::string pr;
+        Code c = receiver->genExp(cg, pr);
+        std::vector<std::string> aps;
+        for (auto& a : args) { std::string ap; c.concat(a->genExp(cg, ap)); aps.push_back(ap); }
+        // 2) empilha parametros: o receptor (this) primeiro, depois os argumentos
+        c.add(makeInstr(TacOp::PARAM, "", pr));
+        for (auto& ap : aps) c.add(makeInstr(TacOp::PARAM, "", ap));
+        // 3) chamada: t = call metodo, num_params
+        place = cg.newTemp();
+        c.add(makeInstr(TacOp::CALL, place, method, std::to_string(aps.size() + 1)));
+        return c;
     }
 };
 
 // ==========================================================
-// 3. COMANDOS (Cmd)
+// 3. COMANDOS
+//   genCmd: gera o 3AC do comando.
 // ==========================================================
-class CmdNode : public ASTNode {};
+class CmdNode : public ASTNode {
+public:
+    virtual Code genCmd(CodeGen& cg) = 0;
+};
 
 class AssignNode : public CmdNode {
     std::string id;
     std::unique_ptr<ExpNode> exp;
 public:
-    AssignNode(std::string name, std::unique_ptr<ExpNode> expression)
-        : id(std::move(name)), exp(std::move(expression)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "Assign: " << id << "\n";
-        if (exp) exp->print(nivel + 1);
-    }
+    AssignNode(std::string n, std::unique_ptr<ExpNode> e) : id(std::move(n)), exp(std::move(e)) {}
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "Assign: " << id << "\n"; if (exp) exp->print(n + 1); }
     std::string checkSemantic(SemanticContext& ctx) override {
-        // Avalia o lado direito ANTES de marcar o destino como inicializado
         std::string expType = exp->checkSemantic(ctx);
-
         std::string varType = ctx.lookup(id);
         if (varType.empty()) varType = ctx.classes.resolveFieldType(ctx.currentClass, id);
-        if (varType.empty())
-            throw std::runtime_error("Erro Semantico: Atribuicao a variavel nao declarada '" + id + "'.");
-
-        if (!ctx.classes.assignableTo(varType, expType)) {
-            throw std::runtime_error("Erro Semantico: Incompatibilidade de tipos na variavel '" + id +
-                "'. Esperado '" + varType + "', recebido '" + expType + "'.");
-        }
-        // Marca como definitivamente atribuída (definite assignment)
+        if (varType.empty()) { ctx.error("Atribuicao a variavel nao declarada '" + id + "'."); ctx.markAssigned(id); return "void"; }
+        if (!ctx.classes.assignableTo(varType, expType))
+            ctx.error("Incompatibilidade de tipos na variavel '" + id + "'. Esperado '" + varType + "', recebido '" + expType + "'.");
         ctx.markAssigned(id);
         return "void";
+    }
+    Code genCmd(CodeGen& cg) override {
+        std::string p;
+        Code c = exp->genExp(cg, p);
+        c.add(makeInstr(TacOp::COPY, id, p));
+        return c;
     }
 };
 
 class ArrayAssignNode : public CmdNode {
     std::string id;
-    std::unique_ptr<ExpNode> indexExp;
-    std::unique_ptr<ExpNode> valueExp;
+    std::unique_ptr<ExpNode> indexExp, valueExp;
 public:
-    ArrayAssignNode(std::string name, std::unique_ptr<ExpNode> idx, std::unique_ptr<ExpNode> val)
-        : id(std::move(name)), indexExp(std::move(idx)), valueExp(std::move(val)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "ArrayAssign: " << id << "\n";
-        if (indexExp) indexExp->print(nivel + 1);
-        if (valueExp) valueExp->print(nivel + 1);
+    ArrayAssignNode(std::string n, std::unique_ptr<ExpNode> i, std::unique_ptr<ExpNode> v)
+        : id(std::move(n)), indexExp(std::move(i)), valueExp(std::move(v)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "ArrayAssign: " << id << "\n";
+        if (indexExp) indexExp->print(n + 1);
+        if (valueExp) valueExp->print(n + 1);
     }
     std::string checkSemantic(SemanticContext& ctx) override {
         std::string varType = ctx.lookup(id);
         if (varType.empty()) varType = ctx.classes.resolveFieldType(ctx.currentClass, id);
-        if (varType.empty())
-            throw std::runtime_error("Erro Semantico: Atribuicao a vetor nao declarado '" + id + "'.");
-        if (varType != "int[]")
-            throw std::runtime_error("Erro Semantico: A variavel '" + id + "' nao e um vetor 'int[]'.");
+        std::string tI = indexExp->checkSemantic(ctx);
+        std::string tV = valueExp->checkSemantic(ctx);
+        if (varType.empty()) { ctx.error("Atribuicao a vetor nao declarado '" + id + "'."); return "void"; }
+        if (varType != "int[]") ctx.error("A variavel '" + id + "' nao e um vetor 'int[]'.");
         if (ctx.isLocal(id) && !ctx.isAssigned(id))
-            throw std::runtime_error("Erro Semantico: O vetor local '" + id +
-                "' pode ser usado antes de ser inicializado (faltou 'new int[]').");
-        if (indexExp->checkSemantic(ctx) != "int")
-            throw std::runtime_error("Erro Semantico: O indice do vetor '" + id + "' deve ser do tipo 'int'.");
-        if (valueExp->checkSemantic(ctx) != "int")
-            throw std::runtime_error("Erro Semantico: O valor atribuido ao vetor '" + id + "' deve ser do tipo 'int'.");
+            ctx.error("O vetor local '" + id + "' pode ser usado antes de ser inicializado (faltou 'new int[]').");
+        if (tI != TIPO_ERRO && tI != "int") ctx.error("O indice do vetor '" + id + "' deve ser do tipo 'int'.");
+        if (tV != TIPO_ERRO && tV != "int") ctx.error("O valor atribuido ao vetor '" + id + "' deve ser do tipo 'int'.");
         return "void";
+    }
+    Code genCmd(CodeGen& cg) override {
+        std::string pi, pv;
+        Code c = indexExp->genExp(cg, pi);
+        c.concat(valueExp->genExp(cg, pv));
+        c.add(makeInstr(TacOp::ARRAY_STORE, id, pi, pv));
+        return c;
     }
 };
 
 class PrintNode : public CmdNode {
     std::unique_ptr<ExpNode> exp;
 public:
-    PrintNode(std::unique_ptr<ExpNode> expression) : exp(std::move(expression)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "Print\n";
-        if (exp) exp->print(nivel + 1);
-    }
-    std::string checkSemantic(SemanticContext& ctx) override {
-        if (exp) exp->checkSemantic(ctx);
-        return "void";
+    PrintNode(std::unique_ptr<ExpNode> e) : exp(std::move(e)) {}
+    void print(int n) const override { imprimirIndentacao(n); std::cout << "Print\n"; if (exp) exp->print(n + 1); }
+    std::string checkSemantic(SemanticContext& ctx) override { if (exp) exp->checkSemantic(ctx); return "void"; }
+    Code genCmd(CodeGen& cg) override {
+        std::string p;
+        Code c = exp->genExp(cg, p);
+        c.add(makeInstr(TacOp::PRINT, "", p));
+        return c;
     }
 };
 
 class IfNode : public CmdNode {
     std::unique_ptr<ExpNode> condition;
-    std::vector<std::unique_ptr<CmdNode>> ifBlock;
-    std::vector<std::unique_ptr<CmdNode>> elseBlock;
+    std::vector<std::unique_ptr<CmdNode>> ifBlock, elseBlock;
 public:
-    IfNode(std::unique_ptr<ExpNode> cond, std::vector<std::unique_ptr<CmdNode>> ifB,
-           std::vector<std::unique_ptr<CmdNode>> elseB)
-        : condition(std::move(cond)), ifBlock(std::move(ifB)), elseBlock(std::move(elseB)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "If\n";
-        if (condition) condition->print(nivel + 1);
-        imprimirIndentacao(nivel); std::cout << "Then:\n";
-        for (const auto& cmd : ifBlock) if (cmd) cmd->print(nivel + 1);
+    IfNode(std::unique_ptr<ExpNode> c, std::vector<std::unique_ptr<CmdNode>> i, std::vector<std::unique_ptr<CmdNode>> e)
+        : condition(std::move(c)), ifBlock(std::move(i)), elseBlock(std::move(e)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "If\n";
+        if (condition) condition->print(n + 1);
+        imprimirIndentacao(n); std::cout << "Then:\n";
+        for (const auto& c : ifBlock) if (c) c->print(n + 1);
         if (!elseBlock.empty()) {
-            imprimirIndentacao(nivel); std::cout << "Else:\n";
-            for (const auto& cmd : elseBlock) if (cmd) cmd->print(nivel + 1);
+            imprimirIndentacao(n); std::cout << "Else:\n";
+            for (const auto& c : elseBlock) if (c) c->print(n + 1);
         }
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (condition && condition->checkSemantic(ctx) != "boolean")
-            throw std::runtime_error("Erro Semantico: A condicao do 'if' deve ser do tipo 'boolean'.");
-
-        // Fluxo de inicialização: uma variável só é "definitivamente atribuída"
-        // após o if se for atribuída em AMBOS os ramos.
+        std::string t = condition ? condition->checkSemantic(ctx) : TIPO_ERRO;
+        if (t != TIPO_ERRO && t != "boolean") ctx.error("A condicao do 'if' deve ser do tipo 'boolean'.");
         std::set<std::string> before = ctx.assignedVars;
-
         ctx.assignedVars = before;
-        for (auto& cmd : ifBlock) if (cmd) cmd->checkSemantic(ctx);
+        for (auto& c : ifBlock) if (c) c->checkSemantic(ctx);
         std::set<std::string> afterThen = ctx.assignedVars;
-
         ctx.assignedVars = before;
-        for (auto& cmd : elseBlock) if (cmd) cmd->checkSemantic(ctx);
+        for (auto& c : elseBlock) if (c) c->checkSemantic(ctx);
         std::set<std::string> afterElse = ctx.assignedVars;
-
-        if (elseBlock.empty())
-            ctx.assignedVars = before;
-        else
-            ctx.assignedVars = intersectAssigned(afterThen, afterElse);
+        ctx.assignedVars = elseBlock.empty() ? before : intersectAssigned(afterThen, afterElse);
         return "void";
+    }
+    Code genCmd(CodeGen& cg) override {
+        std::string pc;
+        Code c = condition->genExp(cg, pc);
+        if (elseBlock.empty()) {
+            std::string Lend = cg.newLabel();
+            c.add(makeInstr(TacOp::IF_FALSE, "", pc, Lend));
+            for (auto& s : ifBlock) if (s) c.concat(s->genCmd(cg));
+            c.add(makeInstr(TacOp::LABEL, "", Lend));
+        } else {
+            std::string Lelse = cg.newLabel();
+            std::string Lend = cg.newLabel();
+            c.add(makeInstr(TacOp::IF_FALSE, "", pc, Lelse));
+            for (auto& s : ifBlock) if (s) c.concat(s->genCmd(cg));
+            c.add(makeInstr(TacOp::GOTO, "", Lend));
+            c.add(makeInstr(TacOp::LABEL, "", Lelse));
+            for (auto& s : elseBlock) if (s) c.concat(s->genCmd(cg));
+            c.add(makeInstr(TacOp::LABEL, "", Lend));
+        }
+        return c;
     }
 };
 
@@ -406,165 +457,147 @@ class WhileNode : public CmdNode {
     std::unique_ptr<ExpNode> condition;
     std::vector<std::unique_ptr<CmdNode>> block;
 public:
-    WhileNode(std::unique_ptr<ExpNode> cond, std::vector<std::unique_ptr<CmdNode>> blk)
-        : condition(std::move(cond)), block(std::move(blk)) {}
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "While\n";
-        if (condition) condition->print(nivel + 1);
-        imprimirIndentacao(nivel); std::cout << "Do:\n";
-        for (const auto& cmd : block) if (cmd) cmd->print(nivel + 1);
+    WhileNode(std::unique_ptr<ExpNode> c, std::vector<std::unique_ptr<CmdNode>> b)
+        : condition(std::move(c)), block(std::move(b)) {}
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "While\n";
+        if (condition) condition->print(n + 1);
+        imprimirIndentacao(n); std::cout << "Do:\n";
+        for (const auto& c : block) if (c) c->print(n + 1);
     }
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (condition && condition->checkSemantic(ctx) != "boolean")
-            throw std::runtime_error("Erro Semantico: A condicao do 'while' deve ser do tipo 'boolean'.");
+        std::string t = condition ? condition->checkSemantic(ctx) : TIPO_ERRO;
+        if (t != TIPO_ERRO && t != "boolean") ctx.error("A condicao do 'while' deve ser do tipo 'boolean'.");
         std::set<std::string> before = ctx.assignedVars;
-        for (auto& cmd : block) if (cmd) cmd->checkSemantic(ctx);
+        for (auto& c : block) if (c) c->checkSemantic(ctx);
         ctx.assignedVars = before;
         return "void";
+    }
+    Code genCmd(CodeGen& cg) override {
+        std::string Lstart = cg.newLabel();
+        std::string Lend = cg.newLabel();
+        Code c;
+        c.add(makeInstr(TacOp::LABEL, "", Lstart));
+        std::string pc;
+        c.concat(condition->genExp(cg, pc));
+        c.add(makeInstr(TacOp::IF_FALSE, "", pc, Lend));
+        for (auto& s : block) if (s) c.concat(s->genCmd(cg));
+        c.add(makeInstr(TacOp::GOTO, "", Lstart));
+        c.add(makeInstr(TacOp::LABEL, "", Lend));
+        return c;
     }
 };
 
 // ==========================================================
-// 4. ESTRUTURAS GLOBAIS
+// 4. ESTRUTURAS
 // ==========================================================
 class MethodNode : public ASTNode {
-    std::string name;
-    std::string returnType;
-    std::vector<VarDecl> params;
-    std::vector<VarDecl> locals;
+    std::string name, returnType;
+    std::vector<VarDecl> params, locals;
     std::vector<std::unique_ptr<CmdNode>> commands;
     std::unique_ptr<ExpNode> returnExp;
 public:
     MethodNode(std::string n, std::string t, std::vector<VarDecl> p, std::vector<VarDecl> l,
-               std::vector<std::unique_ptr<CmdNode>> cmds, std::unique_ptr<ExpNode> ret)
+               std::vector<std::unique_ptr<CmdNode>> c, std::unique_ptr<ExpNode> r)
         : name(std::move(n)), returnType(std::move(t)), params(std::move(p)),
-          locals(std::move(l)), commands(std::move(cmds)), returnExp(std::move(ret)) {}
-
+          locals(std::move(l)), commands(std::move(c)), returnExp(std::move(r)) {}
     const std::string& getName() const { return name; }
     const std::string& getReturnType() const { return returnType; }
     const std::vector<VarDecl>& getParams() const { return params; }
-
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "Method [" << returnType << " " << name << "(";
-        for (size_t i = 0; i < params.size(); ++i)
-            std::cout << (i ? ", " : "") << params[i].type << " " << params[i].name;
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "Method [" << returnType << " " << name << "(";
+        for (size_t i = 0; i < params.size(); ++i) std::cout << (i ? ", " : "") << params[i].type << " " << params[i].name;
         std::cout << ")]\n";
-        for (const auto& cmd : commands) if (cmd) cmd->print(nivel + 1);
-        imprimirIndentacao(nivel + 1); std::cout << "Return:\n";
-        if (returnExp) returnExp->print(nivel + 2);
+        for (const auto& c : commands) if (c) c->print(n + 1);
+        imprimirIndentacao(n + 1); std::cout << "Return:\n";
+        if (returnExp) returnExp->print(n + 2);
     }
-
     std::string checkSemantic(SemanticContext& ctx) override {
         ctx.pushScope();
         std::string savedReturn = ctx.currentReturnType;
         std::set<std::string> savedLocals = ctx.declaredLocals;
         std::set<std::string> savedAssigned = ctx.assignedVars;
-
         ctx.currentReturnType = returnType;
         ctx.declaredLocals.clear();
         ctx.assignedVars.clear();
-
-        // Parâmetros: já chegam inicializados
-        for (auto& p : params) {
-            ctx.declare(p.name, p.type);
-            ctx.markAssigned(p.name);
-        }
-        // Locais: declarados, mas ainda NÃO inicializados
-        for (auto& l : locals) {
-            ctx.declare(l.name, l.type);
-            ctx.declaredLocals.insert(l.name);
-        }
-
-        for (auto& cmd : commands) if (cmd) cmd->checkSemantic(ctx);
-
+        for (auto& p : params) { ctx.declare(p.name, p.type); ctx.markAssigned(p.name); }
+        for (auto& l : locals) { ctx.declare(l.name, l.type); ctx.declaredLocals.insert(l.name); }
+        for (auto& c : commands) if (c) c->checkSemantic(ctx);
         if (returnExp) {
-            std::string retType = returnExp->checkSemantic(ctx);
-            if (!ctx.classes.assignableTo(returnType, retType))
-                throw std::runtime_error("Erro Semantico: O metodo '" + name + "' prometeu retornar '" +
-                    returnType + "', mas tentou retornar '" + retType + "'.");
+            std::string rt = returnExp->checkSemantic(ctx);
+            if (!ctx.classes.assignableTo(returnType, rt))
+                ctx.error("O metodo '" + name + "' prometeu retornar '" + returnType + "', mas tentou retornar '" + rt + "'.");
         }
-
         ctx.currentReturnType = savedReturn;
         ctx.declaredLocals = savedLocals;
         ctx.assignedVars = savedAssigned;
         ctx.popScope();
         return "void";
     }
+    Code gen(CodeGen& cg) {
+        Code c;
+        c.add(makeInstr(TacOp::LABEL, "", cg.currentClass + "." + name));
+        for (auto& cmd : commands) if (cmd) c.concat(cmd->genCmd(cg));
+        std::string pr;
+        if (returnExp) { c.concat(returnExp->genExp(cg, pr)); c.add(makeInstr(TacOp::RETURN, "", pr)); }
+        else c.add(makeInstr(TacOp::RETURN));
+        return c;
+    }
 };
 
 class ClassNode : public ASTNode {
-    std::string name;
-    std::string parent;
+    std::string name, parent;
     std::vector<VarDecl> fields;
     std::vector<std::unique_ptr<MethodNode>> methods;
 public:
-    ClassNode(std::string n, std::string p, std::vector<VarDecl> f,
-              std::vector<std::unique_ptr<MethodNode>> m)
+    ClassNode(std::string n, std::string p, std::vector<VarDecl> f, std::vector<std::unique_ptr<MethodNode>> m)
         : name(std::move(n)), parent(std::move(p)), fields(std::move(f)), methods(std::move(m)) {}
-
     const std::string& getName() const { return name; }
     const std::string& getParent() const { return parent; }
     const std::vector<VarDecl>& getFields() const { return fields; }
     const std::vector<std::unique_ptr<MethodNode>>& getMethods() const { return methods; }
-
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "Class " << name << (parent.empty() ? "" : " extends " + parent) << "\n";
-        for (const auto& f : fields) {
-            imprimirIndentacao(nivel + 1);
-            std::cout << "Field: " << f.type << " " << f.name << "\n";
-        }
-        for (const auto& met : methods) if (met) met->print(nivel + 1);
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "Class " << name << (parent.empty() ? "" : " extends " + parent) << "\n";
+        for (const auto& f : fields) { imprimirIndentacao(n + 1); std::cout << "Field: " << f.type << " " << f.name << "\n"; }
+        for (const auto& m : methods) if (m) m->print(n + 1);
     }
-
     std::string checkSemantic(SemanticContext& ctx) override {
-        if (methods.empty() && fields.empty())
-            throw std::runtime_error("Erro Semantico: A classe '" + name +
-                "' nao pode ser vazia (sem atributos ou metodos).");
-
+        if (methods.empty() && fields.empty()) ctx.error("A classe '" + name + "' nao pode ser vazia (sem atributos ou metodos).");
         ctx.currentClass = name;
         ctx.pushScope();
-
-        // Herança de atributos: empilha os campos desta classe E de todos os
-        // ancestrais, para que métodos enxerguem campos herdados.
         std::string cur = name;
         std::set<std::string> visited;
         while (!cur.empty() && !visited.count(cur)) {
             visited.insert(cur);
             ClassInfo* ci = ctx.classes.get(cur);
             if (!ci) break;
-            for (auto& fld : ci->fields)
-                if (ctx.lookup(fld.first).empty()) // a classe mais derivada tem prioridade
-                    ctx.declare(fld.first, fld.second);
+            for (auto& fld : ci->fields) if (ctx.lookup(fld.first).empty()) ctx.declare(fld.first, fld.second);
             cur = ci->parent;
         }
-
-        for (auto& met : methods) if (met) met->checkSemantic(ctx);
-
+        for (auto& m : methods) if (m) m->checkSemantic(ctx);
         ctx.popScope();
         ctx.currentClass.clear();
         return "void";
     }
+    Code gen(CodeGen& cg) {
+        cg.currentClass = name;
+        Code c;
+        for (auto& m : methods) if (m) c.concat(m->gen(cg));
+        return c;
+    }
 };
 
 class MainClassNode : public ASTNode {
-    std::string name;
-    std::string argName;
+    std::string name, argName;
     std::vector<std::unique_ptr<CmdNode>> commands;
 public:
-    MainClassNode(std::string n, std::string arg, std::vector<std::unique_ptr<CmdNode>> cmds)
-        : name(std::move(n)), argName(std::move(arg)), commands(std::move(cmds)) {}
-
+    MainClassNode(std::string n, std::string a, std::vector<std::unique_ptr<CmdNode>> c)
+        : name(std::move(n)), argName(std::move(a)), commands(std::move(c)) {}
     const std::string& getName() const { return name; }
-
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "MainClass " << name << "\n";
-        for (const auto& cmd : commands) if (cmd) cmd->print(nivel + 1);
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "MainClass " << name << "\n";
+        for (const auto& c : commands) if (c) c->print(n + 1);
     }
-
     std::string checkSemantic(SemanticContext& ctx) override {
         ctx.currentClass = name;
         ctx.pushScope();
@@ -572,10 +605,18 @@ public:
         ctx.assignedVars.clear();
         ctx.declare(argName, "String[]");
         ctx.markAssigned(argName);
-        for (auto& cmd : commands) if (cmd) cmd->checkSemantic(ctx);
+        for (auto& c : commands) if (c) c->checkSemantic(ctx);
         ctx.popScope();
         ctx.currentClass.clear();
         return "void";
+    }
+    Code gen(CodeGen& cg) {
+        cg.currentClass = name;
+        Code c;
+        c.add(makeInstr(TacOp::LABEL, "", "main"));
+        for (auto& cmd : commands) if (cmd) c.concat(cmd->genCmd(cg));
+        c.add(makeInstr(TacOp::HALT));
+        return c;
     }
 };
 
@@ -585,49 +626,45 @@ class ProgNode : public ASTNode {
 public:
     ProgNode(std::unique_ptr<MainClassNode> mc, std::vector<std::unique_ptr<ClassNode>> cls)
         : mainClass(std::move(mc)), classes(std::move(cls)) {}
-
-    void print(int nivel) const override {
-        imprimirIndentacao(nivel);
-        std::cout << "ProgramRoot\n";
-        if (mainClass) mainClass->print(nivel + 1);
-        for (const auto& c : classes) if (c) c->print(nivel + 1);
+    void print(int n) const override {
+        imprimirIndentacao(n); std::cout << "ProgramRoot\n";
+        if (mainClass) mainClass->print(n + 1);
+        for (const auto& c : classes) if (c) c->print(n + 1);
     }
-
-    // 1a PASSADA: coleta classes, campos e assinaturas de métodos no grafo global
-    void buildClassTable(ClassTable& ct) {
+    void buildClassTable(ClassTable& ct, std::vector<std::string>& errs) {
         if (mainClass) ct.addClass(mainClass->getName(), "");
         for (auto& c : classes) {
             if (!c) continue;
-            if (!ct.addClass(c->getName(), c->getParent()))
-                throw std::runtime_error("Erro Semantico: A classe '" + c->getName() +
-                    "' foi declarada mais de uma vez.");
+            if (!ct.addClass(c->getName(), c->getParent())) {
+                errs.push_back("Erro Semantico: A classe '" + c->getName() + "' foi declarada mais de uma vez.");
+                continue;
+            }
             ClassInfo* ci = ct.get(c->getName());
             for (auto& f : c->getFields()) {
-                if (ci->fields.count(f.name))
-                    throw std::runtime_error("Erro Semantico: Atributo '" + f.name +
-                        "' declarado duas vezes na classe '" + c->getName() + "'.");
-                ci->fields[f.name] = f.type;
+                if (ci->fields.count(f.name)) errs.push_back("Erro Semantico: Atributo '" + f.name + "' declarado duas vezes na classe '" + c->getName() + "'.");
+                else ci->fields[f.name] = f.type;
             }
             for (auto& m : c->getMethods()) {
-                if (ci->methods.count(m->getName()))
-                    throw std::runtime_error("Erro Semantico: Metodo '" + m->getName() +
-                        "' declarado duas vezes na classe '" + c->getName() + "'.");
+                if (ci->methods.count(m->getName())) { errs.push_back("Erro Semantico: Metodo '" + m->getName() + "' declarado duas vezes na classe '" + c->getName() + "'."); continue; }
                 MethodSig sig;
                 sig.returnType = m->getReturnType();
                 sig.declaringClass = c->getName();
-                for (auto& p : m->getParams()) {
-                    sig.paramTypes.push_back(p.type);
-                    sig.paramNames.push_back(p.name);
-                }
+                for (auto& p : m->getParams()) { sig.paramTypes.push_back(p.type); sig.paramNames.push_back(p.name); }
                 ci->methods[m->getName()] = sig;
             }
         }
-        ct.verify();
+        ct.verify(errs);
     }
-
     std::string checkSemantic(SemanticContext& ctx) override {
         if (mainClass) mainClass->checkSemantic(ctx);
         for (auto& c : classes) if (c) c->checkSemantic(ctx);
         return "void";
+    }
+    // Gera o codigo intermediario (3AC) do programa inteiro
+    Code gen(CodeGen& cg) {
+        Code c;
+        if (mainClass) c.concat(mainClass->gen(cg));
+        for (auto& cl : classes) if (cl) c.concat(cl->gen(cg));
+        return c;
     }
 };
